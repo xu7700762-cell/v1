@@ -1,7 +1,7 @@
 import numpy as np
 
-from biofoundation_v1.evaluation.fusion import fuse_state_evidence, uniform_anchor_mask
-from biofoundation_v1.evaluation.severity import subject_r4_features, winsorized_std
+from vestibular_fusion.evaluation.fusion import fuse_state_evidence, uniform_anchor_mask
+from vestibular_fusion.evaluation.severity import subject_r4_features, winsorized_std
 
 
 def test_state_fusion_is_r1_r2_plus_two_r4_over_four():

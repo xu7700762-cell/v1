@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "biofoundation-v1"
+name = "vestibular-fusion"
 version = "1.0.0"
-description = "Locked BioFoundation FEMBA/A1 state and severity model reproduction"
+description = "Reproducible Temporal Encoder/A1 state and severity model for vestibular signal analysis"
 requires-python = ">=3.10,<3.11"
 dependencies = [
   "numpy==2.2.6",

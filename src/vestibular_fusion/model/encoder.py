@@ -37,7 +37,7 @@ class MambaWrapper(nn.Module):
     ) -> None:
         super().__init__()
         if Mamba is None:
-            raise ImportError("FEMBAEncoder requires mamba-ssm.") from MAMBA_IMPORT_ERROR
+            raise ImportError("TemporalEncoder requires mamba-ssm.") from MAMBA_IMPORT_ERROR
         if bidirectional and bidirectional_strategy not in {"add", "ew_multiply"}:
             raise ValueError(f"Unsupported bidirectional strategy: {bidirectional_strategy}")
         self.bidirectional = bool(bidirectional)
@@ -70,7 +70,7 @@ class PatchEmbed(nn.Module):
         return value.permute(0, 2, 1)
 
 
-class FEMBAEncoder(nn.Module):
+class TemporalEncoder(nn.Module):
     def __init__(
         self,
         seq_length: int = 1280,
@@ -123,7 +123,7 @@ class FEMBAEncoder(nn.Module):
 
     def model_spec(self) -> dict:
         return {
-            "name": "four_block_bidirectional_FEMBA",
+            "name": "four_block_bidirectional_temporal_encoder",
             "seq_length": self.seq_length,
             "num_channels": self.num_channels,
             "num_blocks": self.num_blocks,
@@ -138,16 +138,16 @@ class FEMBAEncoder(nn.Module):
 
 def build_encoder(
     device: torch.device, backend: str = "native", num_blocks: int | None = None
-) -> FEMBAEncoder:
+) -> TemporalEncoder:
     if backend != "native":
         raise ValueError("v1 supports only the native mamba-ssm backend")
     config = dict(PRETRAIN_MODEL_CONFIG)
     if num_blocks is not None:
         config["num_blocks"] = int(num_blocks)
-    return FEMBAEncoder(**config).to(device)
+    return TemporalEncoder(**config).to(device)
 
 
-def load_pretrained_checkpoint(encoder: FEMBAEncoder, checkpoint_path: Path) -> dict:
+def load_pretrained_checkpoint(encoder: TemporalEncoder, checkpoint_path: Path) -> dict:
     checkpoint = torch.load(str(checkpoint_path), map_location="cpu", weights_only=False)
     state_dict = checkpoint.get("state_dict", checkpoint)
     model_state = encoder.state_dict()
@@ -168,7 +168,7 @@ def load_pretrained_checkpoint(encoder: FEMBAEncoder, checkpoint_path: Path) -> 
     result = encoder.load_state_dict(encoder_state, strict=False)
     if result.missing_keys or result.unexpected_keys:
         raise RuntimeError(
-            "Incomplete FEMBA checkpoint: "
+            "Incomplete Temporal Encoder checkpoint: "
             f"missing={list(result.missing_keys)}, unexpected={list(result.unexpected_keys)}"
         )
     return {

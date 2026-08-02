@@ -1,4 +1,4 @@
-from biofoundation_v1.protocol import EXPECTED, PROTOCOL
+from vestibular_fusion.protocol import EXPECTED, PROTOCOL
 
 
 def test_locked_protocol():

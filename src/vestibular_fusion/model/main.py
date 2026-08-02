@@ -4,12 +4,12 @@ import torch
 import torch.nn as nn
 
 from .a1 import DirectionalMambaKAN
-from .femba import FEMBAEncoder
+from .encoder import TemporalEncoder
 from .severity import PairSeverityHead
 
 
-class BioFoundationV1(nn.Module):
-    """Locked FEMBA + A1 + pair-severity training model."""
+class VestibularFusionModel(nn.Module):
+    """Locked Temporal Encoder + A1 + pair-severity training model."""
 
     def __init__(
         self,
@@ -20,7 +20,7 @@ class BioFoundationV1(nn.Module):
         freeze_encoder: bool = True,
     ) -> None:
         super().__init__()
-        self.encoder = FEMBAEncoder()
+        self.encoder = TemporalEncoder()
         self.encoder.load_state_dict(encoder_state, strict=True)
         self.encoder_frozen = bool(freeze_encoder)
         for parameter in self.encoder.parameters():

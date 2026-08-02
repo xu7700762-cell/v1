@@ -1,4 +1,4 @@
-# BioFoundation v1 参考结果
+# VestibularFusion v1 参考结果
 
 主模型协议：前向 `[t,t+1,t+2]` 上下文、`split_seed=42`、跨被试五折、无 inner loop、`severity_weight=0.3`、状态 `(R1+R2+2R4)/4`、严重度 R4-only。
 

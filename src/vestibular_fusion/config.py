@@ -17,7 +17,7 @@ REQUIRED_PATH_KEYS = (
     "city_acq26_scores",
     "city_source_vrsq_workbook",
     "pretrain_checkpoint",
-    "monifeixing_initial_femba",
+    "monifeixing_initial_encoder",
 )
 
 

@@ -11,7 +11,7 @@ from .verify import verify_report
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="biofoundation_v1")
+    parser = argparse.ArgumentParser(prog="vestibular_fusion")
     sub = parser.add_subparsers(dest="command", required=True)
 
     for name in ("preflight", "reproduce", "train"):

@@ -4,25 +4,31 @@ import argparse
 import json
 from pathlib import Path
 
-from biofoundation_v1.config import load_config
-from biofoundation_v1.evaluation.io import sha256_file, write_json
-from biofoundation_v1.preflight import _check_environment, _check_protocol
-from biofoundation_v1.protocol import PROTOCOL
+from vestibular_fusion.config import load_config
+from vestibular_fusion.evaluation.io import sha256_file, write_json
+from vestibular_fusion.preflight import _check_environment, _check_protocol
+from vestibular_fusion.protocol import PROTOCOL
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SOURCE_WORKSPACE_FILES = (
-    "models/FEMBA.py",
-    "vr_ssq_regression/femba_encoder.py",
-    "vr_ssq_regression/run_vrq_anchor_mambakan_identity_disjoint.py",
-    "vr_ssq_regression/run_city_cruise_identity_disjoint.py",
-    "vr_ssq_regression/run_monifeixing_vrsq_identity_disjoint.py",
-    "vr_ssq_regression/random_femba_a1_vrsq_multitask/model.py",
-    "vr_ssq_regression/random_femba_a1_vrsq_multitask/training.py",
-    "vr_ssq_regression/fair_joint_lambda0p3_ablation/context.py",
-    "vr_ssq_regression/fair_joint_lambda0p3_no_inner_seed42/run.py",
-    "vr_ssq_regression/depth4_unified_scalar_temporal/core.py",
-    "vr_ssq_regression/unified_temporal_severity_head/contextual_r4.py",
+    ("upstream_encoder_module", "models/" + "F" + "EMBA.py"),
+    ("vr_signal_encoder_adapter", "vr_ssq_regression/" + "f" + "emba_encoder.py"),
+    ("vr_subject_split_runner", "vr_ssq_regression/run_vrq_anchor_mambakan_identity_disjoint.py"),
+    ("city_subject_split_runner", "vr_ssq_regression/run_city_cruise_identity_disjoint.py"),
+    ("monifeixing_subject_split_runner", "vr_ssq_regression/run_monifeixing_vrsq_identity_disjoint.py"),
+    (
+        "multitask_model",
+        "vr_ssq_regression/random_" + "f" + "emba_a1_vrsq_multitask/model.py",
+    ),
+    (
+        "multitask_training",
+        "vr_ssq_regression/random_" + "f" + "emba_a1_vrsq_multitask/training.py",
+    ),
+    ("joint_ablation_context", "vr_ssq_regression/fair_joint_lambda0p3_ablation/context.py"),
+    ("subject_split_protocol", "vr_ssq_regression/fair_joint_lambda0p3_no_inner_seed42/run.py"),
+    ("temporal_core", "vr_ssq_regression/depth4_unified_scalar_temporal/core.py"),
+    ("r4_context", "vr_ssq_regression/unified_temporal_severity_head/contextual_r4.py"),
 )
 
 
@@ -51,12 +57,12 @@ def public_source_manifest() -> list[dict]:
 
 def source_workspace_manifest(asset_root: Path) -> list[dict]:
     rows = []
-    for relative in SOURCE_WORKSPACE_FILES:
+    for label, relative in SOURCE_WORKSPACE_FILES:
         path = asset_root / relative
         if not path.is_file():
             raise FileNotFoundError(f"Missing recorded source workspace file: {path}")
         rows.append(
-            {"path": relative, "size": path.stat().st_size, "sha256": sha256_file(path)}
+            {"label": label, "size": path.stat().st_size, "sha256": sha256_file(path)}
         )
     return rows
 

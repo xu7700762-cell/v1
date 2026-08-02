@@ -1,6 +1,6 @@
-# BioFoundation
+# VestibularFusion
 
-BioFoundation 是一个面向生物信号分析的可复现实验项目。项目使用 FEMBA Encoder 提取时序特征，并通过 A1 状态头和 PairSeverityHead 完成两项任务：
+VestibularFusion 是一个面向生物信号分析的可复现实验项目。项目使用 Temporal Encoder 提取时序特征，并通过 A1 状态头和 PairSeverityHead 完成两项任务：
 
 1. 识别样本的状态类别；
 2. 根据成对证据判断高、低眩晕严重度。
@@ -9,7 +9,7 @@ BioFoundation 是一个面向生物信号分析的可复现实验项目。项目
 
 ## 主要功能
 
-- 使用 FEMBA Encoder 作为冻结的时序特征提取器；
+- 使用 Temporal Encoder 作为冻结的时序特征提取器；
 - 使用 A1 状态头完成状态分类；
 - 使用 PairSeverityHead 完成成对严重度分类；
 - 支持三窗口前向上下文和 session 边界处理；
@@ -25,7 +25,7 @@ BioFoundation 是一个面向生物信号分析的可复现实验项目。项目
 输入生物信号窗口
         │
         ▼
-FEMBA Encoder（冻结）
+Temporal Encoder（冻结）
         │
         ├── A1 状态头
         │       └── 状态类别预测
@@ -34,12 +34,12 @@ FEMBA Encoder（冻结）
                 └── 高/低眩晕严重度预测
 ```
 
-项目源码位于 `src/biofoundation_v1/`，其中 `biofoundation_v1` 是当前 Python 包和命令行入口名称。
+项目源码位于 `src/vestibular_fusion/`，其中 `vestibular_fusion` 是当前 Python 包和命令行入口名称。
 
 ```text
-src/biofoundation_v1/
+src/vestibular_fusion/
 ├── model/
-│   ├── femba.py       # FEMBA Encoder 和 checkpoint 加载
+│   ├── encoder.py       # Temporal Encoder 和 checkpoint 加载
 │   ├── a1.py          # A1 状态头
 │   ├── severity.py    # PairSeverityHead
 │   └── main.py        # 主模型组合
@@ -140,14 +140,14 @@ Copy-Item configs/paths.example.json configs/paths.local.json
 python -m pip install -e .
 ```
 
-安装完成后，项目命令模块为 `biofoundation_v1`。
+安装完成后，项目命令模块为 `vestibular_fusion`。
 
 ## 使用方法
 
 ### 环境和资产检查
 
 ```bash
-python -m biofoundation_v1 preflight \
+python -m vestibular_fusion preflight \
   --config configs/paths.local.json
 ```
 
@@ -156,19 +156,19 @@ python -m biofoundation_v1 preflight \
 ### 训练 smoke 测试
 
 ```bash
-python -m biofoundation_v1 train \
+python -m vestibular_fusion train \
   --config configs/paths.local.json \
   --dataset monifeixing \
   --fold 1 \
   --smoke
 ```
 
-smoke 流程只运行单 fold、单批次训练，用于确认 FEMBA Encoder 参数保持不变，而 A1 状态头和 PairSeverityHead 能够通过反向传播更新。
+smoke 流程只运行单 fold、单批次训练，用于确认 Temporal Encoder 参数保持不变，而 A1 状态头和 PairSeverityHead 能够通过反向传播更新。
 
 ### 训练单个 fold
 
 ```bash
-python -m biofoundation_v1 train \
+python -m vestibular_fusion train \
   --config configs/paths.local.json \
   --dataset monifeixing \
   --fold 1
@@ -179,7 +179,7 @@ python -m biofoundation_v1 train \
 ### 完整复现
 
 ```bash
-python -m biofoundation_v1 reproduce \
+python -m vestibular_fusion reproduce \
   --config configs/paths.local.json \
   --datasets monifeixing vrq city \
   --device cuda
@@ -196,7 +196,7 @@ Windows 用户也可以运行：
 ### 验证结果
 
 ```bash
-python -m biofoundation_v1 verify \
+python -m vestibular_fusion verify \
   --actual outputs/seed42/aggregate_report.json
 ```
 

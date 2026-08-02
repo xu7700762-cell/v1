@@ -42,7 +42,7 @@ def build_feature_bank(args, device: torch.device, audit: dict) -> body.FeatureB
     if int(load_info["loaded_keys"]) != 83 or any(
         load_info[name] for name in ("missing_keys", "unexpected_keys", "skipped_keys")
     ):
-        raise RuntimeError(f"Incomplete frozen FEMBA checkpoint load: {load_info}")
+        raise RuntimeError(f"Incomplete frozen Temporal Encoder checkpoint load: {load_info}")
     for parameter in encoder.parameters():
         parameter.requires_grad_(False)
     encoder.eval()
@@ -120,7 +120,7 @@ def build_feature_bank(args, device: torch.device, audit: dict) -> body.FeatureB
     if device.type == "cuda":
         torch.cuda.empty_cache()
     if not all(record.tokens.shape[1:] == (80, 525) for record in records.values()):
-        raise AssertionError("Frozen FEMBA token shape changed from [N,80,525]")
+        raise AssertionError("Frozen Temporal Encoder token shape changed from [N,80,525]")
     return body.FeatureBank(
         records=records,
         samples=samples,

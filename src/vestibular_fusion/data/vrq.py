@@ -64,7 +64,7 @@ def subject_sort_key(subject: str) -> tuple[str, int | str]:
 
 
 def training_dependencies() -> dict[str, Any]:
-    from ..model.femba import build_encoder, load_pretrained_checkpoint
+    from ..model.encoder import build_encoder, load_pretrained_checkpoint
     from .features import (
         covariance_tangent_features,
         fit_and_apply_subject_ea,
@@ -110,7 +110,7 @@ def build_feature_bank(
     if int(load_info["loaded_keys"]) != 83 or any(
         load_info[name] for name in ("missing_keys", "unexpected_keys", "skipped_keys")
     ):
-        raise RuntimeError(f"Incomplete 4-block FEMBA checkpoint: {load_info}")
+        raise RuntimeError(f"Incomplete 4-block Temporal Encoder checkpoint: {load_info}")
     for parameter in encoder.parameters():
         parameter.requires_grad_(False)
     encoder.eval()
@@ -180,7 +180,7 @@ def build_feature_bank(
     if device.type == "cuda":
         torch.cuda.empty_cache()
     if not all(record.tokens.shape[1:] == (80, 525) for record in records.values()):
-        raise AssertionError("FEMBA token shape changed from [windows,80,525]")
+        raise AssertionError("Temporal Encoder token shape changed from [windows,80,525]")
     return FeatureBank(
         records=records,
         samples=samples,

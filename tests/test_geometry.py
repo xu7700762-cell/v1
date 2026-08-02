@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from biofoundation_v1.evaluation.geometry import (
+from vestibular_fusion.evaluation.geometry import (
     lorentz_distance,
     minkowski_inner,
     project_lorentz,

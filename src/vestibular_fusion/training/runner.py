@@ -19,8 +19,8 @@ from ..data.features import (
 from ..evaluation.io import read_csv, read_json, write_json
 from ..evaluation.metrics import subject_sort_key
 from ..model.a1 import DirectionalMambaKAN
-from ..model.femba import FEMBAEncoder
-from ..model.main import BioFoundationV1
+from ..model.encoder import TemporalEncoder
+from ..model.main import VestibularFusionModel
 from ..model.severity import PairSeverityHead
 
 
@@ -89,7 +89,7 @@ def _monifeixing_protocol(config: dict, fold_id: str):
     }
     bank = monifeixing.build_raw_bank(
         Path(config["paths"]["monifeixing_data_root"]),
-        Path(config["paths"]["monifeixing_initial_femba"]),
+        Path(config["paths"]["monifeixing_initial_encoder"]),
         torch.device("cpu"),
     )
     return bank, source, [SeverityExample(subject, "rest1", "rest2", labels[subject]) for subject in source]
@@ -99,7 +99,7 @@ def run_monifeixing_smoke(config: dict, fold: int, device_name: str, output_root
     fold_id = f"fold_{int(fold)}"
     bank, source_subjects, examples = _monifeixing_protocol(config, fold_id)
     device = torch.device(device_name)
-    model = BioFoundationV1(bank.encoder_state, freeze_encoder=True).to(device)
+    model = VestibularFusionModel(bank.encoder_state, freeze_encoder=True).to(device)
     chosen = source_subjects[:4]
     windows, labels = [], []
     for subject in chosen:
@@ -329,7 +329,7 @@ def run_training(
     device = torch.device(device_name)
     if dataset == "monifeixing":
         bank, subjects, examples = _monifeixing_protocol(config, fold_id)
-        encoder = FEMBAEncoder().to(device)
+        encoder = TemporalEncoder().to(device)
         encoder.load_state_dict(bank.encoder_state, strict=True)
         monifeixing.refresh_tokens(bank, encoder, subjects, device, 64)
         del encoder

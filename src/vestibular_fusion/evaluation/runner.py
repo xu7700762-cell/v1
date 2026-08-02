@@ -74,7 +74,7 @@ def _assert_local_modules() -> dict:
     package_root = Path(__file__).resolve().parents[1]
     offenders = []
     for name, module in sys.modules.items():
-        if not name.startswith("biofoundation_v1") or not getattr(module, "__file__", None):
+        if not name.startswith("vestibular_fusion") or not getattr(module, "__file__", None):
             continue
         path = Path(module.__file__).resolve()
         if not path.is_relative_to(package_root) or ("_" + "engine") in path.parts:
@@ -210,7 +210,7 @@ def run_monifeixing(config: dict, output_root: Path, device: torch.device, roots
     report = read_json(protocol_root / "report.json")
     bank = monifeixing.build_raw_bank(
         Path(config["paths"]["monifeixing_data_root"]),
-        Path(config["paths"]["monifeixing_initial_femba"]),
+        Path(config["paths"]["monifeixing_initial_encoder"]),
         device,
     )
     labels = {

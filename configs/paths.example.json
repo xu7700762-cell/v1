@@ -1,9 +1,9 @@
 {
   "output_root": "outputs/seed42",
   "paths": {
-    "asset_root": "/path/to/BioFoundation-main",
+    "asset_root": "/path/to/external-assets",
     "monifeixing_data_root": "/path/to/preprocessed_monifeixing",
-    "monifeixing_initial_femba": "/path/to/pretrained_femba_depth4.pt",
+    "monifeixing_initial_encoder": "/path/to/pretrained_encoder_depth4.pt",
     "monifeixing_workbook": "/path/to/VRSQ.xlsx",
     "vrq_data_root": "/path/to/preprocessed_vrq",
     "vrq_ssq_path": "/path/to/VRQ_SSQ.xlsx",
@@ -12,6 +12,6 @@
     "city_ssq_workbook": "/path/to/SSQ-TS正规总分汇总表.xlsx",
     "city_acq26_scores": "/path/to/questionnair_data26.txt",
     "city_source_vrsq_workbook": "/path/to/VRSQ.xlsx",
-    "pretrain_checkpoint": "/path/to/pretrained_femba.ckpt"
+    "pretrain_checkpoint": "/path/to/pretrained_encoder.ckpt"
   }
 }

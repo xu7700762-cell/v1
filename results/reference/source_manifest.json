@@ -14,7 +14,7 @@
     "checkpoint_retraining": false,
     "interpretation": "optimistic_non_nested_severity_diagnostic"
   },
-  "asset_summary_sha256": "e010fa7b9062a34d4514c54470f6e1c7fb7689bcb4fac0ac2b1414f6fd75f82d",
+  "asset_summary_sha256": "a81a90be81bae0b3b8d085729984f0627d80e156dfbf8df6fa5ba1b077440b04",
   "assets": [
     {
       "label": "monifeixing protocol config",
@@ -52,12 +52,12 @@
       "sha256": "a327551a64807c5b5232a9bbf2a6dbdd3242a5d8c76b27025d2fda1b6acb9b89"
     },
     {
-      "label": "monifeixing initial FEMBA",
+      "label": "monifeixing initial encoder",
       "size": 114186218,
       "sha256": "1f45a3fd61cf95920d7944c0d486b82afb272414df2d14f80d74189f291f21c6"
     },
     {
-      "label": "pretrained FEMBA",
+      "label": "pretrained encoder",
       "size": 114186218,
       "sha256": "0e2ab9109d87a32c6b25f0c307fb8b1102ef5e0e83e86b9b07f7dee166daaa27"
     },
@@ -1314,57 +1314,57 @@
   ],
   "source_workspace_files": [
     {
-      "path": "models/FEMBA.py",
+      "label": "upstream encoder module",
       "size": 19280,
       "sha256": "9f5c7b7b35308724d66c386ffa7d19af12eef1a07f9aef4f9f1c40044d835904"
     },
     {
-      "path": "vr_ssq_regression/femba_encoder.py",
+      "label": "VR signal encoder adapter",
       "size": 10686,
       "sha256": "25cd591d279bfb281040a41a3f634085c4bddd3166babe60f082f9bb2355c2b0"
     },
     {
-      "path": "vr_ssq_regression/run_vrq_anchor_mambakan_identity_disjoint.py",
+      "label": "VR subject split runner",
       "size": 97447,
       "sha256": "b7345680b907a16a1f91b38e5c778ec3bfffee8160fc75ac9c43d60d915eb2af"
     },
     {
-      "path": "vr_ssq_regression/run_city_cruise_identity_disjoint.py",
+      "label": "city subject split runner",
       "size": 68680,
       "sha256": "3a51c8f617be1df2689fc5d2a7ba894959024ad091b8e62d660d5d4e6aef0a79"
     },
     {
-      "path": "vr_ssq_regression/run_monifeixing_vrsq_identity_disjoint.py",
+      "label": "monifeixing subject split runner",
       "size": 68789,
       "sha256": "5a0446f464f9f8400b1add23659f700b7d994a4dd3561c69c5e22b5495e243b0"
     },
     {
-      "path": "vr_ssq_regression/random_femba_a1_vrsq_multitask/model.py",
+      "label": "multitask model",
       "size": 4800,
       "sha256": "cc1230650dce9e1a404aff99ff3f97e8b1f001d64bba09f3625c329cbfd204ef"
     },
     {
-      "path": "vr_ssq_regression/random_femba_a1_vrsq_multitask/training.py",
+      "label": "multitask training",
       "size": 18360,
       "sha256": "76fc77662e0cae73bbc6f8e72e57a2ec01e37054ff85b4c998003be4c42cf0e7"
     },
     {
-      "path": "vr_ssq_regression/fair_joint_lambda0p3_ablation/context.py",
+      "label": "joint ablation context",
       "size": 13577,
       "sha256": "c1bca07c29c3d0bfdc3392386d523b8f19f6f681be03ef4c6fe48843208e67c9"
     },
     {
-      "path": "vr_ssq_regression/fair_joint_lambda0p3_no_inner_seed42/run.py",
+      "label": "subject split protocol",
       "size": 20510,
       "sha256": "06edd92c17d936e7d5ecf3fe0994f578c65cf312648c1d1c48c06695e7bbaf00"
     },
     {
-      "path": "vr_ssq_regression/depth4_unified_scalar_temporal/core.py",
+      "label": "temporal core",
       "size": 9100,
       "sha256": "1fbfcee44891a97be05b3ca9d381eb44320f105dfe3effbaf10b4538685452ad"
     },
     {
-      "path": "vr_ssq_regression/unified_temporal_severity_head/contextual_r4.py",
+      "label": "R4 context",
       "size": 17204,
       "sha256": "22878694a284eb5c54a34b7cb30b54076fc33c6914fc1f03ed641af0321c6ad1"
     }
@@ -1372,18 +1372,18 @@
   "release_files": [
     {
       "path": "README.md",
-      "size": 3260,
-      "sha256": "028d4190e428f64f07f9e93efb2821a4afdb39bd40807feef49d5a7a82f1041f"
+      "size": 7443,
+      "sha256": "d3aad9e27d58b5be724f003396577fc32b34f9c2ef8bec39cce21717f6f373d1"
     },
     {
       "path": "configs/paths.example.json",
-      "size": 759,
-      "sha256": "108e066ed42b4f9f7a03e481f6c6e353ee21aa18ee20aca18a40e7c658fb51e2"
+      "size": 762,
+      "sha256": "a7b81be45236a8dbf4d9658ca9369c0152b19f0d26debbab7817de4f3f9d4fb1"
     },
     {
       "path": "pyproject.toml",
-      "size": 497,
-      "sha256": "5b97ba829f67aef6cddf18ce342a30d0e241bc8015f97f791a8d85e12ac3eb81"
+      "size": 519,
+      "sha256": "0bea80433ce4c64e0c88d2b56b710a0283897be8bb6bab7bb1418f313b9aa01b"
     },
     {
       "path": "requirements-cuda.txt",
@@ -1392,8 +1392,8 @@
     },
     {
       "path": "results/reference/RESULTS.md",
-      "size": 578,
-      "sha256": "46b8631e73e06e54eb9986e0ed21971911807ffe4bc563e368459efebfa075b6"
+      "size": 581,
+      "sha256": "6f6cf52ac78c29d91154fa1bf1d8f2ae07f337ce7044bf516f1410d5e61e2fec"
     },
     {
       "path": "results/reference/aggregate_report.json",
@@ -1402,188 +1402,188 @@
     },
     {
       "path": "scripts/generate_manifest.py",
-      "size": 3850,
-      "sha256": "ad0050704cfe0b5ef5d9349f12024257f6517e80e5b014fc5e1eb0328c21f8d9"
+      "size": 4239,
+      "sha256": "c84d1ae79b778e88e5648e8512feac36f24ee4cd371f6d9dae560570f2bafc2a"
     },
     {
       "path": "scripts/reproduce_wsl.ps1",
-      "size": 608,
-      "sha256": "ecbe9184f8d8d25ea86fe3ee1c4b12d13756cc60010458097e83e41defa4ffa2"
+      "size": 609,
+      "sha256": "b149cd954e0f1718ed9747524a495c9845976627bcc514d837e9562c8fbf07c6"
     },
     {
       "path": "scripts/reproduce_wsl.sh",
-      "size": 300,
-      "sha256": "bbb6f37196302038e0bd7b804b3818a41cc590ca76c7190184e1614297903438"
+      "size": 301,
+      "sha256": "e01dd4283fd722217b4d5ecb4211c41129ae1d0177a4c1530a05b4549459a946"
     },
     {
-      "path": "src/biofoundation_v1/__init__.py",
-      "size": 90,
-      "sha256": "877fe97a5082fd910b69526b1079c2977702aa0b4074a9675ea50d30ea49e778"
+      "path": "src/vestibular_fusion/__init__.py",
+      "size": 93,
+      "sha256": "547d33b01ceaf1e621a7d6d8b651890e8c5ee4a9c5f34c0d221b6d3bf3428375"
     },
     {
-      "path": "src/biofoundation_v1/__main__.py",
+      "path": "src/vestibular_fusion/__main__.py",
       "size": 80,
       "sha256": "3d2438ae92f4746e9ffaa1f837b1fe803f6281091d1f31f8c95643716f257d9a"
     },
     {
-      "path": "src/biofoundation_v1/cli.py",
-      "size": 2341,
-      "sha256": "203ff0b7fccf7e75de68deadb39be1a44bb6bc5660060fe5bd53fc9ca798462c"
+      "path": "src/vestibular_fusion/cli.py",
+      "size": 2342,
+      "sha256": "be970f5b6159a83ce6133c2f8feeaff6fc97107bbc07b980fa4db85e3eecfa36"
     },
     {
-      "path": "src/biofoundation_v1/config.py",
-      "size": 1750,
-      "sha256": "b884feae61712f532441f319c63d81719252e7b6054627e8bee29f0504a55aa5"
+      "path": "src/vestibular_fusion/config.py",
+      "size": 1752,
+      "sha256": "2d82613586762b943bc1e95dfb20393048fb9331c7836ea782de9106bf5f78b0"
     },
     {
-      "path": "src/biofoundation_v1/data/__init__.py",
+      "path": "src/vestibular_fusion/data/__init__.py",
       "size": 56,
       "sha256": "154ae3a8e3331bae181c1c8187779ccd8c8d7cdec4c09c662148b9d4538202a6"
     },
     {
-      "path": "src/biofoundation_v1/data/city.py",
-      "size": 5759,
-      "sha256": "c77152c7b99fe726aca3d37fa86a60e219cd070b8558fc29c5745abb5db4fbe9"
+      "path": "src/vestibular_fusion/data/city.py",
+      "size": 5781,
+      "sha256": "c228678c670fbe1fa6b54985eaaeae8c94daa8196a137cf715d549cc5cfa4ff4"
     },
     {
-      "path": "src/biofoundation_v1/data/features.py",
+      "path": "src/vestibular_fusion/data/features.py",
       "size": 8686,
       "sha256": "8c7bce067e3fe4e51c53f36ff70a27a88a4cbfd3f899398b761cf49374b0b4c1"
     },
     {
-      "path": "src/biofoundation_v1/data/monifeixing.py",
-      "size": 8041,
-      "sha256": "631689427971cedc3085b4783d53fe7de03e3eb72bb4e07a3978d8dda783e7b9"
+      "path": "src/vestibular_fusion/data/monifeixing.py",
+      "size": 8063,
+      "sha256": "10fe18ac985358afe40e67bcba86616fb4b75e640172ca2dce5c49dba434bfc2"
     },
     {
-      "path": "src/biofoundation_v1/data/vrq.py",
-      "size": 14440,
-      "sha256": "c0c7086b4fceedb6f7c00e3eefd4682b58770145290898934c9a44f9afff1c6c"
+      "path": "src/vestibular_fusion/data/vrq.py",
+      "size": 14464,
+      "sha256": "5ea38d7be4c098ed2380a8d5ca644c5daa3163014da41f39d339db36fb0bbbe5"
     },
     {
-      "path": "src/biofoundation_v1/evaluation/__init__.py",
+      "path": "src/vestibular_fusion/evaluation/__init__.py",
       "size": 197,
       "sha256": "703e228aa6f75b105d5a4de77a8d9b206d2cef38c30c08ff963abfaf5fd4007e"
     },
     {
-      "path": "src/biofoundation_v1/evaluation/context.py",
+      "path": "src/vestibular_fusion/evaluation/context.py",
       "size": 1108,
       "sha256": "5373406f13b6bac5fad242a6e800cacf894bcf62dabbf594790ba02796686110"
     },
     {
-      "path": "src/biofoundation_v1/evaluation/fusion.py",
+      "path": "src/vestibular_fusion/evaluation/fusion.py",
       "size": 7244,
       "sha256": "1ddf2d9217e0262a196cfe626540c2ecafd0881cf7c2e660ec53fd2d386bc41f"
     },
     {
-      "path": "src/biofoundation_v1/evaluation/geometry.py",
+      "path": "src/vestibular_fusion/evaluation/geometry.py",
       "size": 2779,
       "sha256": "df3167881ca2a77c1ec4e2dc03eb2b0e7f427031d9516b7ac6f91524f8950bcb"
     },
     {
-      "path": "src/biofoundation_v1/evaluation/io.py",
+      "path": "src/vestibular_fusion/evaluation/io.py",
       "size": 4793,
       "sha256": "4100de877e194f50612354c6ef0bc001868f7019fde3287a5468d8db97960581"
     },
     {
-      "path": "src/biofoundation_v1/evaluation/metrics.py",
+      "path": "src/vestibular_fusion/evaluation/metrics.py",
       "size": 2247,
       "sha256": "32cfd64f602463df2c213b74c5a64a6ab4b2e6102288ad7bc91969444b9fcdb0"
     },
     {
-      "path": "src/biofoundation_v1/evaluation/runner.py",
-      "size": 23032,
-      "sha256": "cfb0dd12e86e363d38a2be9f40eafe3f54db6f0d5d6f4df71804c0949eb201bd"
+      "path": "src/vestibular_fusion/evaluation/runner.py",
+      "size": 23035,
+      "sha256": "6b14297c8b30c3c2d62382ed1429dfb5bc68a12be32a0590040172448b6df5f2"
     },
     {
-      "path": "src/biofoundation_v1/evaluation/severity.py",
+      "path": "src/vestibular_fusion/evaluation/severity.py",
       "size": 12364,
       "sha256": "9426613f684f94f6f588b5500cb41390112c48e74eb80d83ea35657df5fffb2f"
     },
     {
-      "path": "src/biofoundation_v1/model/__init__.py",
-      "size": 312,
-      "sha256": "478f1073029d4f2ca2c7f8ab1b8973e60bd34e890f5ad74ead080abb3e0d66bd"
+      "path": "src/vestibular_fusion/model/__init__.py",
+      "size": 332,
+      "sha256": "a76eac983950d973eec3a74fc47c938d5525d3ab88ed61733c216c24ca626056"
     },
     {
-      "path": "src/biofoundation_v1/model/a1.py",
+      "path": "src/vestibular_fusion/model/a1.py",
       "size": 6873,
       "sha256": "b06293ed8351c3db62cbc21ff321501f9e69d3dfb4ccc0dc083efd1a32c3b132"
     },
     {
-      "path": "src/biofoundation_v1/model/femba.py",
-      "size": 6799,
-      "sha256": "e28704ea01ddcbcdd29683feee703ff3f0f69dcb7ebfc60afbd93effea87e3d2"
+      "path": "src/vestibular_fusion/model/encoder.py",
+      "size": 6836,
+      "sha256": "0615fdfdb8c33cd9eb848fa5a7ff0d45f487aca26b54d87d9e78556bb0c7d221"
     },
     {
-      "path": "src/biofoundation_v1/model/main.py",
-      "size": 2761,
-      "sha256": "cb8925e8b873b9d889228b712099653ef1ed8a82bb38b913964d7af0bda73f00"
+      "path": "src/vestibular_fusion/model/main.py",
+      "size": 2786,
+      "sha256": "41974b0acae09dbecddbdb075799df78aff852958a97d0887e18fc643204b501"
     },
     {
-      "path": "src/biofoundation_v1/model/severity.py",
+      "path": "src/vestibular_fusion/model/severity.py",
       "size": 1374,
       "sha256": "6ebdf6fa7d9aa7ae23feec9de95d9d8b9c2ecffc59cb0994520d5e8bfe2b070d"
     },
     {
-      "path": "src/biofoundation_v1/preflight.py",
-      "size": 14387,
-      "sha256": "fd28fc20141923abd70ff9399a4094817b0d83179647b4a18d398607b5fbfe48"
+      "path": "src/vestibular_fusion/preflight.py",
+      "size": 14546,
+      "sha256": "15f1f5686775fcf37521c684534c9a283f6efd661752fc6160ca1d68dd94356b"
     },
     {
-      "path": "src/biofoundation_v1/protocol.py",
+      "path": "src/vestibular_fusion/protocol.py",
       "size": 977,
       "sha256": "3dd1ab82500a01cec7cdac4e4ec5828e315d752754ed54a29654b3ad6d6b5921"
     },
     {
-      "path": "src/biofoundation_v1/reproduce.py",
+      "path": "src/vestibular_fusion/reproduce.py",
       "size": 279,
       "sha256": "3b3c9f481fa2b336db2b99c03612be5dc3016b005df2e24cc30cf3d1abf577e2"
     },
     {
-      "path": "src/biofoundation_v1/train.py",
+      "path": "src/vestibular_fusion/train.py",
       "size": 464,
       "sha256": "8839bb17b766657716776279fcbfe43457a2efa33fe771ff4ce84ece4b20c85b"
     },
     {
-      "path": "src/biofoundation_v1/training/__init__.py",
-      "size": 53,
-      "sha256": "a9474758a8db53577f2f9e15691712a613789b373baf2d2d164a7657ac3a1aaa"
+      "path": "src/vestibular_fusion/training/__init__.py",
+      "size": 52,
+      "sha256": "cf7cdaa4cab5a7f0b018282cfac320756a9a1e15d4a3bf0fb98b91bcdda69541"
     },
     {
-      "path": "src/biofoundation_v1/training/runner.py",
-      "size": 13888,
-      "sha256": "3412e56e3330f62152e5342c53ffb11d67b26ab1e5f6b8f9a6b9ef3c0bcd1540"
+      "path": "src/vestibular_fusion/training/runner.py",
+      "size": 13910,
+      "sha256": "2c458d1c862c4c4f83b26024ca82e3b695aae1ecfe75d448608face10a6bcd6e"
     },
     {
-      "path": "src/biofoundation_v1/verify.py",
+      "path": "src/vestibular_fusion/verify.py",
       "size": 2081,
       "sha256": "87b928ced7e42aa5a759352a92427907a0d2111247daf028937402a002a3bdc2"
     },
     {
       "path": "tests/test_context.py",
-      "size": 1011,
-      "sha256": "8284571ca2281446368f56bd6d35400705072022562c2452fd11caaec559cf29"
+      "size": 1012,
+      "sha256": "463e9b757288d29157d733e21023ecab056c918a93170524d6ecaf5f7be21750"
     },
     {
       "path": "tests/test_fusion.py",
-      "size": 1250,
-      "sha256": "0da87a225db5975ed2545e0b86936d9b9ee400a7079e903d71858f252b019f93"
+      "size": 1252,
+      "sha256": "4184fa90d3795402bbb4f8a9bf23ac65849548500c90da047b962990ea3727f6"
     },
     {
       "path": "tests/test_geometry.py",
-      "size": 806,
-      "sha256": "99c778cad0335724f6e720e7ea0c3bc332366e052a4f7996fd8168841afede76"
+      "size": 807,
+      "sha256": "e5b12e20940c4ba931fb266bf6562a67b48de4810626901366a372f266c40848"
     },
     {
       "path": "tests/test_protocol.py",
-      "size": 463,
-      "sha256": "f842929ce8076fefd52b450624954cd882bff81a066383ab5fea6d0b2a515652"
+      "size": 464,
+      "sha256": "e0358376c2fb94bba5e1db1103865569028058e4802aad30b201335dadd6a539"
     },
     {
       "path": "tests/test_validation.py",
-      "size": 1651,
-      "sha256": "c4a9cb60d736537cd4a8ec7255bb9f74ed3976c5ad0e35e15e4cc6f8477010f1"
+      "size": 1654,
+      "sha256": "d57fd50d8feb75dcf935689506a1d2b9e35b0a7c80f753f7c7cddedf91359a00"
     }
   ]
 }

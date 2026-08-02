@@ -10,7 +10,7 @@ from scipy.io import loadmat
 
 from ..evaluation.geometry import geometry_distance, stable_rank
 from ..model.a1 import DirectionalMambaKAN
-from ..model.femba import FEMBAEncoder, build_encoder, load_pretrained_checkpoint
+from ..model.encoder import TemporalEncoder, build_encoder, load_pretrained_checkpoint
 from .features import cpu_state_dict, fit_and_apply_subject_ea
 
 
@@ -76,7 +76,7 @@ def build_raw_bank(
     if int(load_info["loaded_keys"]) != 83 or any(
         load_info[name] for name in ("missing_keys", "unexpected_keys", "skipped_keys")
     ):
-        raise RuntimeError(f"Incomplete FEMBA initialization: {load_info}")
+        raise RuntimeError(f"Incomplete Temporal Encoder initialization: {load_info}")
     encoder_state = cpu_state_dict(encoder)
     records: dict[str, SubjectRecord] = {}
     samples: list[StateSample] = []
@@ -124,7 +124,7 @@ def build_raw_bank(
 @torch.no_grad()
 def refresh_tokens(
     bank: FeatureBank,
-    encoder: FEMBAEncoder,
+    encoder: TemporalEncoder,
     subjects: list[str],
     device: torch.device,
     batch_size: int,
@@ -146,7 +146,7 @@ def apply_selected_encoder(
     bank: FeatureBank, checkpoint: Path, device: torch.device, batch_size: int
 ) -> dict:
     payload = torch.load(checkpoint, map_location="cpu", weights_only=True)
-    encoder = FEMBAEncoder().to(device)
+    encoder = TemporalEncoder().to(device)
     encoder.load_state_dict(payload["state_dict"], strict=True)
     for parameter in encoder.parameters():
         parameter.requires_grad_(False)

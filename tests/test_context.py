@@ -1,6 +1,6 @@
 import numpy as np
 
-from biofoundation_v1.evaluation.context import smooth_current_future
+from vestibular_fusion.evaluation.context import smooth_current_future
 
 
 def test_forward_context_replicates_right_boundary_without_crossing_session():

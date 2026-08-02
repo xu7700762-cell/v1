@@ -134,7 +134,7 @@ def _check_source_tree() -> dict:
         raise RuntimeError(f"Historical source trees remain in v1: {existing}")
     forbidden_patterns = (
         "sys.path" + ".insert",
-        "models" + ".FEMBA",
+        "from " + "models import",
         "importlib" + ".import_module",
     )
     violations = []
@@ -202,16 +202,21 @@ def _check_protocol(config: dict) -> dict:
         raise RuntimeError("city manifest reports source/target identity overlap")
     _check_fivefold_subject_split(city_manifest["fold_manifest"], "city fold manifest")
 
+    initial_hash = next(
+        value
+        for key, value in mono_config.items()
+        if key.startswith("initial_") and key.endswith("_sha256")
+    )
     files.append(
         _require_hash(
-            Path(paths["monifeixing_initial_femba"]),
-            mono_config["initial_femba_sha256"],
-            "monifeixing initial FEMBA",
+            Path(paths["monifeixing_initial_encoder"]),
+            initial_hash,
+            "monifeixing initial Temporal Encoder",
         )
     )
     pretrain_expected = vrq_manifest["run_fingerprint_payload"]["inputs"]["checkpoint_sha256"]
     files.append(
-        _require_hash(Path(paths["pretrain_checkpoint"]), pretrain_expected, "pretrained FEMBA")
+        _require_hash(Path(paths["pretrain_checkpoint"]), pretrain_expected, "pretrained Temporal Encoder")
     )
     for name, entry in mono_manifest["inputs"]["source_mat_files"].items():
         files.append(

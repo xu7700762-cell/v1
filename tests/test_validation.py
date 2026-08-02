@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from biofoundation_v1.evaluation.io import sha256_file
-from biofoundation_v1.evaluation.metrics import binary_metrics
-from biofoundation_v1.preflight import _check_fivefold_subject_split, _require_hash
+from vestibular_fusion.evaluation.io import sha256_file
+from vestibular_fusion.evaluation.metrics import binary_metrics
+from vestibular_fusion.preflight import _check_fivefold_subject_split, _require_hash
 
 
 def _valid_folds():
