@@ -1,17 +1,18 @@
 # VestibularFusion
 
-VestibularFusion 是一个面向生物信号分析的可复现实验项目。项目使用 Temporal Encoder 提取时序特征，并通过 A1 状态头和 PairSeverityHead 完成两项任务：
+VestibularFusion 是一个面向生物信号分析的可复现实验项目。项目使用 Temporal Encoder 提取时序特征，并通过 `DirectionalMambaKAN`（A1）完成状态建模、生成 R1、R2、R4 证据。项目同时提供两条用途不同的严重度路径：训练接口使用 `PairSeverityHead` 作为辅助任务头；锁定复现使用 R4-only 标量特征和逻辑回归生成报告结果。
 
 1. 识别样本的状态类别；
-2. 根据成对证据判断高、低眩晕严重度。
+2. 基于锁定的 R4-only 诊断协议判断高、低眩晕严重度。
 
 项目提供统一的数据适配、模型组件、训练入口、评估流程、环境检查和结果验证工具，支持 monifeixing、VRQ 和城市巡航三个数据集。
 
 ## 主要功能
 
 - 使用 Temporal Encoder 作为冻结的时序特征提取器；
-- 使用 A1 状态头完成状态分类；
-- 使用 PairSeverityHead 完成成对严重度分类；
+- 使用 A1 完成状态分类并生成 R1、R2、R4 证据；
+- 在训练接口中使用 PairSeverityHead 提供辅助严重度监督；
+- 在锁定复现中使用 R4-only 标量特征与逻辑回归评估严重度；
 - 支持三窗口前向上下文和 session 边界处理；
 - 支持跨被试五折划分，避免同一被试同时出现在训练集和评估集；
 - 提供训练 smoke 测试，用于验证 Encoder 冻结以及任务头参数更新；
@@ -19,7 +20,9 @@ VestibularFusion 是一个面向生物信号分析的可复现实验项目。项
 - 提供从外部数据和 checkpoint 重新运行评估的统一命令；
 - 提供脱敏的参考结果和源码清单。
 
-## 模型结构
+## 训练与复现路径
+
+训练路径用于验证和保留联合训练能力：
 
 ```text
 输入生物信号窗口
@@ -27,12 +30,44 @@ VestibularFusion 是一个面向生物信号分析的可复现实验项目。项
         ▼
 Temporal Encoder（冻结）
         │
-        ├── A1 状态头
-        │       └── 状态类别预测
+        ▼
+       DirectionalMambaKAN（A1）
         │
-        └── PairSeverityHead
-                └── 高/低眩晕严重度预测
+        ├── 状态预测 ──────────────► L_state
+        │
+        └── reference/task embeddings
+                    │
+                    ▼
+             PairSeverityHead ─────► L_severity
+
+总损失：L_state + 0.3 * L_severity
 ```
+
+锁定复现路径用于生成本仓库公布的严重度结果：
+
+```text
+输入生物信号窗口
+        │
+        ▼
+Temporal Encoder → DirectionalMambaKAN（A1） → R4 evidence
+                            │
+                            ▼
+                均匀选择 11 个任务窗口
+                            │
+                            ▼
+                  winsorized standard deviation
+                            │
+                            ▼
+                    单维 severity feature
+                            │
+                            ▼
+              StandardScaler + LogisticRegression
+                            │
+                            ▼
+                    报告严重度 ACC
+```
+
+城市巡航在逻辑回归前还会执行累计 R4 特征和 subject contextualization。`reproduce` 只加载锁定的 Temporal Encoder/A1 评估组件，不创建或加载 `PairSeverityHead`，因此锁定报告的严重度结果不是该训练头的性能结果。
 
 项目源码位于 `src/vestibular_fusion/`，其中 `vestibular_fusion` 是当前 Python 包和命令行入口名称。
 
@@ -71,14 +106,16 @@ src/vestibular_fusion/
 - `training_seed=1001`；
 - 跨被试五折划分；
 - 不使用 inner fold；
-- 联合训练损失为 `L_state + 0.3 * L_severity`；
+- `train` 的联合训练损失为 `L_state + 0.3 * L_severity`；
+- `train` 会训练 PairSeverityHead，并在训练 checkpoint 中保存 `severity_head_state_dict`；
+- `reproduce` 不加载 `severity_head_state_dict`，而是在每个外层 fold 的 source subjects 上重新拟合 R4-only 逻辑回归；
 - 状态证据使用 R1、R2 和 R4，融合公式为：
 
   ```text
   (R1 + R2 + 2R4) / 4
   ```
 
-- 严重度分类使用 R4-only 证据。
+- 锁定报告的严重度分类使用 R4-only 证据。
 
 ## 参考结果
 
@@ -89,6 +126,8 @@ src/vestibular_fusion/
 | monifeixing | 88.40% | 83.33% |
 | VRQ | 80.79% | 69.57% |
 | 城市巡航 | 77.83% | 68.83% |
+
+> **结果解释：** 表中的 83.33%、69.57% 和 68.83% 均来自 R4-only source-fit logistic severity diagnostic，不是 `PairSeverityHead` 的测试成绩。本仓库当前没有把 `PairSeverityHead` 的外层测试性能作为参考结果发布。准确地说，`PairSeverityHead` 只作为辅助严重度监督约束 A1 表示学习；正式严重度推理采用 R4 离散度特征和源域逻辑回归归类。
 
 完整参考结果位于：
 
@@ -163,7 +202,7 @@ python -m vestibular_fusion train \
   --smoke
 ```
 
-smoke 流程只运行单 fold、单批次训练，用于确认 Temporal Encoder 参数保持不变，而 A1 状态头和 PairSeverityHead 能够通过反向传播更新。
+smoke 流程只运行单 fold、单批次训练，用于确认 Temporal Encoder 参数保持不变，而 A1 和 PairSeverityHead 能够通过反向传播更新。该检查只能证明训练路径有效，不代表参考结果使用了 PairSeverityHead。
 
 ### 训练单个 fold
 
@@ -176,6 +215,8 @@ python -m vestibular_fusion train \
 
 数据集参数可选：`monifeixing`、`vrq`、`city`。
 
+完整训练会保存 A1 的 `model_state_dict` 和 PairSeverityHead 的 `severity_head_state_dict`。这些训练输出与下面的锁定复现路径是不同的评估接口。
+
 ### 完整复现
 
 ```bash
@@ -185,7 +226,7 @@ python -m vestibular_fusion reproduce \
   --device cuda
 ```
 
-复现流程会先执行 `preflight`，然后从五折 checkpoint 重新运行三个数据集的评估，最后自动验证生成的 `aggregate_report.json`。输出写入 `outputs/`，不使用静默 resume。
+复现流程会先执行 `preflight`，然后加载锁定的五折 A1 checkpoint，生成 R1、R2、R4 状态证据，并在 source subjects 上拟合 R4-only 严重度逻辑回归，最后自动验证生成的 `aggregate_report.json`。该命令不加载 PairSeverityHead。输出写入 `outputs/`，不使用静默 resume。
 
 Windows 用户也可以运行：
 
