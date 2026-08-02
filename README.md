@@ -107,8 +107,11 @@ src/vestibular_fusion/
 - 跨被试五折划分；
 - 不使用 inner fold；
 - `train` 的联合训练损失为 `L_state + 0.3 * L_severity`；
+- 状态分支只计算并优化 `L_state`；历史遗留的 `direction_loss` 和 `ranking_loss` 不属于当前主协议，已从训练路径移除；
 - `train` 会训练 PairSeverityHead，并在训练 checkpoint 中保存 `severity_head_state_dict`；
 - `reproduce` 不加载 `severity_head_state_dict`，而是在每个外层 fold 的 source subjects 上重新拟合 R4-only 逻辑回归；
+- A1 前向路径已移除不参与计算的 gated 分支和无效缩放参数；旧 checkpoint 中对应的 `mamba_scale`、`support_raw_scale`、`gated_kan.*`、`gated_post_norm.*` 键会在加载时显式迁移，其他活动参数仍严格校验；
+- `VestibularFusionModel` 是 smoke 与正式训练共用的 A1/PairSeverityHead 容器；正式复现仍只加载 A1 checkpoint，并使用独立的 R4-only 评估函数；
 - 状态证据使用 R1、R2 和 R4，融合公式为：
 
   ```text

@@ -10,7 +10,7 @@ import numpy as np
 import torch
 
 from ..data import city, monifeixing, vrq
-from ..model.a1 import DirectionalMambaKAN
+from ..model.a1 import DirectionalMambaKAN, load_checkpoint_state_dict
 from ..protocol import PROTOCOL
 from .fusion import source_r4_rows, state_rows, uniform_anchor_mask
 from .io import (
@@ -90,7 +90,7 @@ def _load_checkpoint_model(path: Path, device: torch.device) -> tuple[Directiona
     state = payload.get("model_state_dict")
     if not isinstance(state, dict):
         raise RuntimeError(f"Checkpoint has no model_state_dict: {path}")
-    model.load_state_dict(state, strict=True)
+    load_checkpoint_state_dict(model, state, source=str(path))
     model.eval()
     return model, payload
 

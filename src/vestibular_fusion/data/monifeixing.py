@@ -9,9 +9,10 @@ import torch
 from scipy.io import loadmat
 
 from ..evaluation.geometry import geometry_distance, stable_rank
-from ..model.a1 import DirectionalMambaKAN
+from ..model.a1 import DirectionalMambaKAN, load_checkpoint_state_dict
 from ..model.encoder import TemporalEncoder, build_encoder, load_pretrained_checkpoint
 from .features import cpu_state_dict, fit_and_apply_subject_ea
+from .types import AuditMetadata, FeatureBank, SubjectRecord
 
 
 SUBJECTS = tuple(f"sub{index}" for index in range(1, 19))
@@ -29,26 +30,6 @@ class StateSample:
     window_index: int
     local_index: int
     mat_path: str
-
-
-@dataclass
-class SubjectRecord:
-    windows: np.ndarray
-    tokens: np.ndarray
-    labels: np.ndarray
-    sessions: list[str]
-    window_indices: np.ndarray
-    ea_matrix: np.ndarray
-
-
-@dataclass
-class FeatureBank:
-    records: dict[str, SubjectRecord]
-    samples: list[StateSample]
-    encoder_load_info: dict
-    encoder_state: dict[str, torch.Tensor]
-    encoder_mode: str
-    manifest: dict
 
 
 def _load_windows(path: Path, mat_key: str) -> np.ndarray:
@@ -110,15 +91,22 @@ def build_raw_bank(
             tokens=aligned.astype(np.float16),
             labels=np.asarray(labels, dtype=np.int64),
             sessions=sessions,
-            window_indices=np.asarray(window_indices, dtype=np.int64),
-            ea_matrix=ea_matrix,
         )
     del encoder
     if device.type == "cuda":
         torch.cuda.empty_cache()
     if len(samples) != 2159:
         raise AssertionError(f"Expected 2,159 monifeixing windows, got {len(samples)}")
-    return FeatureBank(records, samples, load_info, encoder_state, "full", {"frozen_prefix_blocks": 0})
+    return FeatureBank(
+        records=records,
+        samples=samples,
+        encoder_state=encoder_state,
+        audit=AuditMetadata(
+            encoder_load_info=load_info,
+            encoder_mode="frozen",
+            manifest={"frozen_prefix_blocks": 0},
+        ),
+    )
 
 
 @torch.no_grad()
@@ -165,7 +153,7 @@ def apply_selected_encoder(
 def load_a1_checkpoint(path: Path, device: torch.device) -> tuple[DirectionalMambaKAN, dict]:
     payload = torch.load(path, map_location="cpu", weights_only=True)
     model = DirectionalMambaKAN.from_model_spec(payload.get("model_spec")).to(device)
-    model.load_state_dict(payload["model_state_dict"], strict=True)
+    load_checkpoint_state_dict(model, payload["model_state_dict"], source=str(path))
     return model, payload
 
 

@@ -167,12 +167,11 @@ def subject_balanced_centers(embeddings: torch.Tensor, labels: torch.Tensor) -> 
 
 def leave_one_subject_out_logits(
     embeddings: torch.Tensor, labels: torch.Tensor, temperature: torch.Tensor
-) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, dict]:
+) -> torch.Tensor:
     centers = subject_balanced_centers(embeddings, labels)
     if centers.shape[0] < 2:
         raise ValueError("Directional prototype training requires at least two subjects")
-    directions = F.normalize(centers[:, 1] - centers[:, 0], dim=-1)
-    logits, direction_losses, ranking_losses = [], [], []
+    logits = []
     for domain_index in range(len(centers)):
         other = torch.arange(len(centers), device=centers.device) != domain_index
         prototype = F.normalize(centers[other].mean(dim=0), dim=-1)
@@ -180,13 +179,4 @@ def leave_one_subject_out_logits(
             embeddings[domain_index] @ prototype[1] - embeddings[domain_index] @ prototype[0]
         )
         logits.append(current)
-        global_direction = F.normalize(directions[other].mean(dim=0), dim=0)
-        direction_losses.append(1.0 - torch.dot(directions[domain_index], global_direction))
-        ranking_losses.append(
-            F.softplus(
-                current.new_tensor(0.20)
-                - (current[labels[domain_index] > 0.5].mean() - current[labels[domain_index] <= 0.5].mean())
-            )
-        )
-    logits_tensor = torch.stack(logits)
-    return logits_tensor, torch.stack(direction_losses).mean(), torch.stack(ranking_losses).mean(), {}
+    return torch.stack(logits)

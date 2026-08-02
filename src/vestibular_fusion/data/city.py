@@ -107,8 +107,6 @@ def build_feature_bank(args, device: torch.device, audit: dict) -> body.FeatureB
             tokens=tokens,
             labels=np.asarray(labels, dtype=np.int64),
             sessions=list(sessions),
-            window_indices=np.asarray(window_indices, dtype=np.int64),
-            ea_matrix=ea_matrix,
         )
         subject_manifest[subject] = {
             "segments": segment_counts,
@@ -124,13 +122,15 @@ def build_feature_bank(args, device: torch.device, audit: dict) -> body.FeatureB
     return body.FeatureBank(
         records=records,
         samples=samples,
-        encoder_load_info=load_info,
         encoder_state={},
-        encoder_mode="frozen",
-        manifest={
-            "num_subjects": len(records),
-            "num_windows": len(samples),
-            "offline_transductive_subject_EA": True,
-            "subjects": subject_manifest,
-        },
+        audit=body.AuditMetadata(
+            encoder_load_info=load_info,
+            encoder_mode="frozen",
+            manifest={
+                "num_subjects": len(records),
+                "num_windows": len(samples),
+                "offline_transductive_subject_EA": True,
+                "subjects": subject_manifest,
+            },
+        ),
     )

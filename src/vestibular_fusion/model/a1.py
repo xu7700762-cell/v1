@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Optional
+from collections.abc import Mapping
 
 import torch
 import torch.nn as nn
@@ -30,19 +30,38 @@ class PolynomialKANLayer(nn.Module):
         )
 
 
-class GatedPolynomialKAN(nn.Module):
-    def __init__(self, dim: int) -> None:
-        super().__init__()
-        self.linear = nn.Linear(int(dim), int(dim))
-        self.quadratic = nn.Linear(int(dim), int(dim))
-        self.alpha = nn.Parameter(torch.zeros(()))
-        self.norm = nn.LayerNorm(int(dim))
+CHECKPOINT_COMPAT_PREFIXES = (
+    "mamba_scale",
+    "support_raw_scale",
+    "gated_kan.",
+    "gated_post_norm.",
+)
 
-    def forward(self, value: torch.Tensor) -> torch.Tensor:
-        limited = torch.tanh(value)
-        return self.norm(
-            self.linear(limited) + torch.tanh(self.alpha) * self.quadratic(limited.square())
+
+def load_checkpoint_state_dict(
+    model: nn.Module, state: Mapping[str, torch.Tensor], *, source: str = "checkpoint"
+) -> tuple[str, ...]:
+    """Load an A1 checkpoint while migrating keys from removed inactive branches.
+
+    The locked checkpoints predate the release cleanup and contain parameters for
+    branches that were never read by the forward path. Those keys are discarded
+    explicitly; all active model keys still use strict loading.
+    """
+    filtered = dict(state)
+    ignored = tuple(
+        sorted(
+            key
+            for key in filtered
+            if any(key == prefix or key.startswith(prefix) for prefix in CHECKPOINT_COMPAT_PREFIXES)
         )
+    )
+    for key in ignored:
+        del filtered[key]
+    try:
+        model.load_state_dict(filtered, strict=True)
+    except RuntimeError as exc:
+        raise RuntimeError(f"Invalid {source} after legacy checkpoint migration") from exc
+    return ignored
 
 
 class DirectionalMambaKAN(nn.Module):
@@ -63,11 +82,7 @@ class DirectionalMambaKAN(nn.Module):
         self.input_proj = nn.Sequential(nn.Linear(525, 96), nn.SiLU(), nn.Dropout(self.dropout))
         self.mamba = Mamba2(d_model=96, d_state=64, d_conv=4, expand=2)
         self.mamba_norm = nn.LayerNorm(96)
-        self.mamba_scale = nn.Parameter(torch.tensor(1e-3), requires_grad=False)
         self.legacy_domain_scale = nn.Parameter(torch.ones(96))
-        self.support_raw_scale = nn.Parameter(
-            torch.full((96,), math.log(math.expm1(1.0))), requires_grad=False
-        )
         self.domain_bias = nn.Parameter(torch.zeros(96))
         self.attention = nn.Sequential(
             nn.LayerNorm(96), nn.Linear(96, 96), nn.SiLU(), nn.Linear(96, 1, bias=False)
@@ -76,21 +91,11 @@ class DirectionalMambaKAN(nn.Module):
         self.pool_proj = nn.Linear(384, 96)
         self.legacy_kan = PolynomialKANLayer(96, 160, degree=2)
         self.legacy_post_norm = nn.LayerNorm(160)
-        self.gated_kan = GatedPolynomialKAN(96)
-        self.gated_post_norm = nn.LayerNorm(96)
-        for parameter in self.gated_kan.parameters():
-            parameter.requires_grad_(False)
-        for parameter in self.gated_post_norm.parameters():
-            parameter.requires_grad_(False)
         self.log_temperature = nn.Parameter(torch.tensor(math.log(math.expm1(9.0))))
 
     @property
     def embedding_dim(self) -> int:
         return 160
-
-    @property
-    def uses_support_norm(self) -> bool:
-        return False
 
     def temperature(self) -> torch.Tensor:
         return F.softplus(self.log_temperature) + 1.0
@@ -142,10 +147,7 @@ class DirectionalMambaKAN(nn.Module):
         embedding = self.legacy_post_norm(self.legacy_kan(latent))
         return F.normalize(embedding, dim=-1).reshape(*prefix, self.embedding_dim)
 
-    def forward_domain_batch(
-        self, anchor_tokens: torch.Tensor, support_tokens: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        del support_tokens
+    def forward_domain_batch(self, anchor_tokens: torch.Tensor) -> torch.Tensor:
         sequence = self.encode_sequence(anchor_tokens)
         return self.pool_embedding(self.normalize_domains(sequence, sequence))
 

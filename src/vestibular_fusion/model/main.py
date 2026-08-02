@@ -9,22 +9,24 @@ from .severity import PairSeverityHead
 
 
 class VestibularFusionModel(nn.Module):
-    """Locked Temporal Encoder + A1 + pair-severity training model."""
+    """Shared A1/state and pair-severity model used by smoke and full training."""
 
     def __init__(
         self,
-        encoder_state: dict[str, torch.Tensor],
+        encoder_state: dict[str, torch.Tensor] | None = None,
         *,
         a1_seed: int = 1001,
         dropout: float = 0.25,
         freeze_encoder: bool = True,
     ) -> None:
         super().__init__()
-        self.encoder = TemporalEncoder()
-        self.encoder.load_state_dict(encoder_state, strict=True)
+        self.encoder: TemporalEncoder | None = None
         self.encoder_frozen = bool(freeze_encoder)
-        for parameter in self.encoder.parameters():
-            parameter.requires_grad_(not self.encoder_frozen)
+        if encoder_state is not None:
+            self.encoder = TemporalEncoder()
+            self.encoder.load_state_dict(encoder_state, strict=True)
+            for parameter in self.encoder.parameters():
+                parameter.requires_grad_(not self.encoder_frozen)
         with torch.random.fork_rng(devices=[]):
             torch.manual_seed(int(a1_seed))
             self.a1 = DirectionalMambaKAN(dropout)
@@ -32,11 +34,13 @@ class VestibularFusionModel(nn.Module):
 
     def train(self, mode: bool = True):
         super().train(mode)
-        if self.encoder_frozen:
+        if self.encoder is not None and self.encoder_frozen:
             self.encoder.eval()
         return self
 
     def forward_domain_batch(self, windows: torch.Tensor) -> torch.Tensor:
+        if self.encoder is None:
+            raise RuntimeError("Raw-window forward requires an encoder_state")
         if windows.ndim != 4 or windows.shape[-2:] != (30, 1280):
             raise ValueError(f"Expected [domains,trials,30,1280], got {tuple(windows.shape)}")
         domains, trials = windows.shape[:2]
@@ -46,6 +50,9 @@ class VestibularFusionModel(nn.Module):
         else:
             tokens = self.encoder.forward_tokens(windows.reshape(-1, 30, 1280).float())
         return self.a1.forward_domain_batch(tokens.reshape(domains, trials, 80, 525))
+
+    def forward_token_batch(self, tokens: torch.Tensor) -> torch.Tensor:
+        return self.a1.forward_domain_batch(tokens)
 
     def severity_logits(
         self, reference_embeddings: list[torch.Tensor], task_embeddings: list[torch.Tensor]

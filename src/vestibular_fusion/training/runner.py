@@ -30,7 +30,6 @@ class SeverityExample:
     reference_session: str
     task_session: str
     label: int
-    weight: float = 1.0
 
 
 def _parameter_snapshot(model: torch.nn.Module) -> dict[str, torch.Tensor]:
@@ -48,8 +47,7 @@ def _sample_session_indices(record, session: str, count: int) -> list[int]:
 
 
 def _pair_logits(
-    a1: DirectionalMambaKAN,
-    head: PairSeverityHead,
+    model: VestibularFusionModel,
     bank,
     examples: list[SeverityExample],
     device: torch.device,
@@ -63,11 +61,11 @@ def _pair_logits(
         task = _sample_session_indices(record, example.task_session, windows)
         indices = reference + task
         tokens = torch.as_tensor(record.tokens[indices], dtype=torch.float32, device=device)
-        sequence = a1.encode_sequence(tokens)
-        normalized = a1.normalize_subject(sequence, sequence)
-        embeddings = a1.pool_embedding(normalized)
-        features.append(head.features(embeddings[:windows], embeddings[windows:]))
-    return head(torch.stack(features))
+        sequence = model.a1.encode_sequence(tokens)
+        normalized = model.a1.normalize_subject(sequence, sequence)
+        embeddings = model.a1.pool_embedding(normalized)
+        features.append(model.severity_head.features(embeddings[:windows], embeddings[windows:]))
+    return model.severity_head(torch.stack(features))
 
 
 def _monifeixing_protocol(config: dict, fold_id: str):
@@ -121,9 +119,7 @@ def run_monifeixing_smoke(config: dict, fold: int, device_name: str, output_root
     model.train()
     optimizer.zero_grad(set_to_none=True)
     embeddings = model.forward_domain_batch(window_tensor)
-    state_logits, _, _, _ = leave_one_subject_out_logits(
-        embeddings, label_tensor, model.a1.temperature()
-    )
+    state_logits = leave_one_subject_out_logits(embeddings, label_tensor, model.a1.temperature())
     state_loss = F.binary_cross_entropy_with_logits(state_logits, label_tensor)
     severity_examples = [next(example for example in examples if example.subject_id == subject) for subject in chosen]
     reference_embeddings = [embedding[current_labels < 0.5] for embedding, current_labels in zip(embeddings, label_tensor)]
@@ -249,16 +245,20 @@ def _full_fold_train(
         raise FileExistsError(f"Training refuses a non-empty output directory: {output_root}")
     output_root.mkdir(parents=True, exist_ok=True)
     torch.manual_seed(1001)
-    a1 = DirectionalMambaKAN(0.25).to(device)
-    head = PairSeverityHead(a1.embedding_dim, 0.25, 1018).to(device)
+    model = VestibularFusionModel(a1_seed=1001, dropout=0.25).to(device)
+    a1 = model.a1
+    head = model.severity_head
     optimizer = torch.optim.AdamW(
-        list(a1.parameters()) + list(head.parameters()), lr=1e-4, weight_decay=1e-3
+        [parameter for parameter in model.parameters() if parameter.requires_grad],
+        lr=1e-4,
+        weight_decay=1e-3,
     )
     source_indices = [
         sample.sample_index for sample in bank.samples if sample.subject_id in set(source_subjects)
     ]
     history = []
     rng = random.Random(1001)
+    model.train()
     for epoch in range(1, int(epochs) + 1):
         totals = {"loss": 0.0, "state_loss": 0.0, "severity_loss": 0.0, "steps": 0}
         batches = domain_batches(bank, source_indices, 1001 + epoch * 100003, 5, 5)
@@ -270,17 +270,15 @@ def _full_fold_train(
             labels = labels.to(device)
             current = [shuffled[totals["steps"] % len(shuffled)]]
             optimizer.zero_grad(set_to_none=True)
-            embeddings = a1.forward_domain_batch(tokens)
-            state_logits, _, _, _ = leave_one_subject_out_logits(
-                embeddings, labels, a1.temperature()
-            )
+            embeddings = model.forward_token_batch(tokens)
+            state_logits = leave_one_subject_out_logits(embeddings, labels, a1.temperature())
             state_loss = F.binary_cross_entropy_with_logits(state_logits, labels)
-            direct_logits = _pair_logits(a1, head, bank, current, device, windows=5)
+            direct_logits = _pair_logits(model, bank, current, device, windows=5)
             direct_labels = direct_logits.new_tensor([float(example.label) for example in current])
             severity_loss = F.binary_cross_entropy_with_logits(direct_logits, direct_labels)
             loss = state_loss + 0.3 * severity_loss
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(list(a1.parameters()) + list(head.parameters()), 1.0)
+            torch.nn.utils.clip_grad_norm_(list(model.parameters()), 1.0)
             optimizer.step()
             totals["loss"] += float(loss.detach().cpu())
             totals["state_loss"] += float(state_loss.detach().cpu())
@@ -298,9 +296,11 @@ def _full_fold_train(
             "severity_weight": 0.3,
             "encoder_frozen": True,
             "model_spec": a1.model_spec(),
-            "model_state_dict": {key: value.detach().cpu() for key, value in a1.state_dict().items()},
+            "model_state_dict": {
+                key: value.detach().cpu() for key, value in model.a1.state_dict().items()
+            },
             "severity_head_state_dict": {
-                key: value.detach().cpu() for key, value in head.state_dict().items()
+                key: value.detach().cpu() for key, value in model.severity_head.state_dict().items()
             },
             "source_subjects": source_subjects,
         },

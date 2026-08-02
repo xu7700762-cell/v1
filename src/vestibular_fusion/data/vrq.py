@@ -11,6 +11,8 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
+from .types import AuditMetadata, FeatureBank, SubjectRecord
+
 
 WINDOW_SIZE = 1280
 STRIDE = 1280
@@ -35,26 +37,6 @@ class StateSample:
     window_index: int
     local_index: int
     mat_path: str
-
-
-@dataclass
-class SubjectRecord:
-    windows: np.ndarray
-    tokens: np.ndarray
-    labels: np.ndarray
-    sessions: list[str]
-    window_indices: np.ndarray
-    ea_matrix: np.ndarray
-
-
-@dataclass
-class FeatureBank:
-    records: dict[str, SubjectRecord]
-    samples: list[StateSample]
-    encoder_load_info: dict
-    encoder_state: dict[str, torch.Tensor]
-    encoder_mode: str
-    manifest: dict
 
 
 def subject_sort_key(subject: str) -> tuple[str, int | str]:
@@ -167,8 +149,6 @@ def build_feature_bank(
             tokens=tokens,
             labels=label_array,
             sessions=list(sessions),
-            window_indices=np.asarray(window_indices, dtype=np.int64),
-            ea_matrix=ea_matrix,
         )
         feature_manifest[protocol.subject_id] = {
             "sessions": session_counts,
@@ -184,16 +164,18 @@ def build_feature_bank(
     return FeatureBank(
         records=records,
         samples=samples,
-        encoder_load_info=load_info,
         encoder_state={},
-        encoder_mode="frozen",
-        manifest={
-            "num_subjects": len(records),
-            "num_allowed_windows": len(samples),
-            "offline_transductive_subject_EA": True,
-            "subjects": feature_manifest,
-            "read_only_qc": audit.get("read_only_qc", True),
-        },
+        audit=AuditMetadata(
+            encoder_load_info=load_info,
+            encoder_mode="frozen",
+            manifest={
+                "num_subjects": len(records),
+                "num_allowed_windows": len(samples),
+                "offline_transductive_subject_EA": True,
+                "subjects": feature_manifest,
+                "read_only_qc": audit.get("read_only_qc", True),
+            },
+        ),
     )
 
 
