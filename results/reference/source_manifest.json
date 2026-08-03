@@ -1389,8 +1389,8 @@
   "release_files": [
     {
       "path": "README.md",
-      "size": 15981,
-      "sha256": "ac17ddbcf0fdebbba17a03d159b4883cced819a5d6ab626cd27f4fbd0e0ad849"
+      "size": 17004,
+      "sha256": "7d594aad9cad5d94f378624c87aeee66ff5bb8909559d45dcf53c2b4ad0ce9ba"
     },
     {
       "path": "configs/paths.example.json",
@@ -1416,6 +1416,16 @@
       "path": "results/reference/aggregate_report.json",
       "size": 729,
       "sha256": "f56276d28e2a52e8c6d0aa999d47ab1e0edbefbfcf6a344cc996adc413255a37"
+    },
+    {
+      "path": "results/retrained_v3/RESULTS.md",
+      "size": 811,
+      "sha256": "8af0beef0b71a08432635f159985f16844d66d09f92d0d6f0582b60fc52f4048"
+    },
+    {
+      "path": "results/retrained_v3/aggregate_report.json",
+      "size": 1612,
+      "sha256": "1867aeaa2b7e70d4f4a2a72f896e4dd1e939f9a27079e485bbd67aa305815b9d"
     },
     {
       "path": "scripts/generate_manifest.py",
@@ -1479,8 +1489,8 @@
     },
     {
       "path": "src/vestibular_fusion/data/vrq.py",
-      "size": 15727,
-      "sha256": "61cbe14fa26de73440f0029eff802f7fb311a8830b809b2832a1d5b05a9edc16"
+      "size": 19967,
+      "sha256": "4cdf24301201969a96083f100a7ecefa065ce412d01fed5eacaa6fbf25710714"
     },
     {
       "path": "src/vestibular_fusion/evaluate.py",
@@ -1529,8 +1539,8 @@
     },
     {
       "path": "src/vestibular_fusion/evaluation/trained.py",
-      "size": 17623,
-      "sha256": "a72c8273a0a335174f57909ecc490e452be85a96cb2f95c14814a8d5ddd96173"
+      "size": 15757,
+      "sha256": "4b2939e360c8ee3f4d006da9e0742d79336e0eb8011083fea69b3cec8e799730"
     },
     {
       "path": "src/vestibular_fusion/model/__init__.py",
@@ -1624,8 +1634,8 @@
     },
     {
       "path": "tests/test_trained_evaluation.py",
-      "size": 5787,
-      "sha256": "69a0e48488014191591bb18931100ecbf557c2609be735740ee66ec684d24b71"
+      "size": 6394,
+      "sha256": "422478ae214f4f24073a5e40ce115affaaca6a9368b666ea039f8792ad971ac4"
     },
     {
       "path": "tests/test_validation.py",

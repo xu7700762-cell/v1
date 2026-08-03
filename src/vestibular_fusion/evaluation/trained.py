@@ -180,38 +180,6 @@ def _save_fold_cache(
     )
 
 
-def _monifeixing_fold_inputs(
-    protocol_root: Path,
-    fold_id: str,
-    target_deep_rows: list[dict],
-    threshold: float,
-    moments: dict[str, np.ndarray],
-    protocol: FoldProtocol,
-) -> tuple[list[dict], np.ndarray, np.ndarray]:
-    outer = protocol_root / "outer_inputs" / fold_id
-    rows = read_csv(outer / "outer_rows.csv")
-    with np.load(outer / "outer_arrays.npz", allow_pickle=False) as payload:
-        fixed_margins = payload["fixed_margins"].astype(np.float64)
-    by_sample = {int(row["sample_index"]): row for row in target_deep_rows}
-    if set(by_sample) != {int(row["sample_index"]) for row in rows}:
-        raise RuntimeError(f"{fold_id} trained A1 rows do not align with fixed R1/R2 rows")
-    for row in rows:
-        row["local_index"] = int(by_sample[int(row["sample_index"])]["local_index"])
-    deep_scores = np.asarray(
-        [float(by_sample[int(row["sample_index"])]["mambakan_score"]) for row in rows],
-        dtype=np.float64,
-    )
-    for row, score in zip(rows, deep_scores):
-        for stale in ("score", "threshold", "y_pred", "correct"):
-            row.pop(stale, None)
-        row["mambakan_score"] = float(score)
-    margins = np.column_stack(
-        [fixed_margins, vrq.logit(deep_scores) - float(vrq.logit(threshold))]
-    )
-    _mark_target_anchors(rows, protocol.test_subjects, "rest1")
-    return rows, margins, _aligned_moments(rows, moments)
-
-
 def _standard_fold_inputs(
     bank,
     fixed_features: dict,
@@ -221,6 +189,7 @@ def _standard_fold_inputs(
     threshold: float,
     protocol: FoldProtocol,
     seed: int,
+    anchor_session: str,
 ) -> tuple[list[dict], np.ndarray, np.ndarray]:
     fixed_predictions = {}
     for family in vrq.FEATURE_FAMILIES:
@@ -245,7 +214,7 @@ def _standard_fold_inputs(
             - float(vrq.logit(threshold))
         ]
     ).astype(np.float64)
-    _mark_target_anchors(target_deep_rows, protocol.test_subjects, "rest01")
+    _mark_target_anchors(target_deep_rows, protocol.test_subjects, anchor_session)
     return target_deep_rows, margins, _aligned_moments(target_deep_rows, moments)
 
 
@@ -266,13 +235,16 @@ def _finalize(
     scored_state = [row for row in state if not int(row["calibration_anchor"])]
     report = {
         "status": "complete",
-        "evaluation": "trained_a1_locked_protocol",
+        "evaluation": "trained_a1_raw_fixed_views",
         "dataset": dataset,
         "protocol": {
             "state_fusion": "(R1 + R2 + 2R4) / 4",
             "severity": "R4-only source-fit LogisticRegression",
             "pair_severity_head_used_for_prediction": False,
             "reference_checkpoint_used": False,
+            "fixed_view_generation": "v1_raw_source_train_validation_selection",
+            "historical_fixed_margins_used": False,
+            "historical_fixed_view_configs_used": False,
         },
         "state_metrics": binary_metrics(scored_state),
         "r4_severity_metrics": binary_metrics(severity),
@@ -301,6 +273,7 @@ def run_trained_evaluation(
     device = torch.device(device_name)
     dataset_data = load_training_dataset(config, dataset, device)
     roots = _asset_roots(config)
+    fixed_features = vrq.fixed_feature_bank(dataset_data.bank)
 
     if dataset == "monifeixing":
         encoder = TemporalEncoder().to(device)
@@ -322,7 +295,6 @@ def run_trained_evaluation(
             for row in read_csv(protocol_root / "severity_predictions.csv")
         }
         task_sessions = {subject: "rest2" for subject in dataset_data.bank.records}
-        fixed_features = None
         city_audit = None
         seed = 1001
     elif dataset == "vrq":
@@ -334,7 +306,6 @@ def run_trained_evaluation(
         }
         protocols = [vrq.SubjectProtocol(**row) for row in manifest["subject_protocols"]]
         task_sessions = {row.subject_id: row.final_task for row in protocols}
-        fixed_features = vrq.fixed_feature_bank(dataset_data.bank)
         city_audit = None
         seed = int(manifest["run_fingerprint_payload"]["training"]["seed"])
     else:
@@ -347,7 +318,6 @@ def run_trained_evaluation(
                 metadata["mat_path"] = str(data_root / Path(metadata["mat_path"]).name)
         labels = None
         task_sessions = None
-        fixed_features = vrq.fixed_feature_bank(dataset_data.bank)
         seed = 1001
 
     all_state = []
@@ -355,6 +325,13 @@ def run_trained_evaluation(
     fold_reports = []
     for fold_id in FOLD_IDS:
         protocol = dataset_data.folds[fold_id]
+        fixed_configs, fixed_selection = vrq.select_fixed_view_configs(
+            fixed_features,
+            dataset_data.bank,
+            list(protocol.calibration_train_subjects),
+            list(protocol.calibration_val_subjects),
+            seed,
+        )
         model, checkpoint_payload = _load_trained_a1(
             checkpoints[fold_id], dataset, fold_id, protocol, device
         )
@@ -363,42 +340,18 @@ def run_trained_evaluation(
         )
         threshold, threshold_metrics = vrq.choose_score_threshold(calibration_deep)
 
-        if dataset == "monifeixing":
-            target_rows, margins, target_moments = _monifeixing_fold_inputs(
-                protocol_root,
-                fold_id,
-                target_deep,
-                threshold,
-                moments,
-                protocol,
-            )
-            resmooth = True
-        elif dataset == "vrq":
-            metrics = read_json(protocol_root / "main" / "full" / "folds" / fold_id / "metrics.json")
-            target_rows, margins, target_moments = _standard_fold_inputs(
-                dataset_data.bank,
-                fixed_features,
-                metrics["fixed_view_configs"],
-                target_deep,
-                moments,
-                threshold,
-                protocol,
-                seed,
-            )
-            resmooth = False
-        else:
-            fold_report = read_json(protocol_root / "lambda_0p3" / fold_id / "outer" / "report.json")
-            target_rows, margins, target_moments = _standard_fold_inputs(
-                dataset_data.bank,
-                fixed_features,
-                fold_report["fixed_views"],
-                target_deep,
-                moments,
-                threshold,
-                protocol,
-                seed,
-            )
-            resmooth = False
+        target_rows, margins, target_moments = _standard_fold_inputs(
+            dataset_data.bank,
+            fixed_features,
+            fixed_configs,
+            target_deep,
+            moments,
+            threshold,
+            protocol,
+            seed,
+            "rest1" if dataset == "monifeixing" else "rest01",
+        )
+        resmooth = dataset == "monifeixing"
 
         source_rows, source_moments = _source_raw(
             dataset_data.bank,
@@ -461,6 +414,7 @@ def run_trained_evaluation(
                 "source_r4_logistic_coefficient": coefficient,
                 "severity_head_loaded": False,
                 "best_epoch": int(checkpoint_payload["best_epoch"]),
+                "fixed_view_selection": fixed_selection,
             }
         )
         del model

@@ -5,14 +5,13 @@ import pytest
 
 from vestibular_fusion.cli import build_parser
 from vestibular_fusion.data.monifeixing import fit_prototypes
-from vestibular_fusion.data.vrq import choose_score_threshold
+from vestibular_fusion.data.types import AuditMetadata, FeatureBank, SubjectRecord
+from vestibular_fusion.data.vrq import choose_score_threshold, select_fixed_view_configs
 from vestibular_fusion.evaluation.trained import (
     FOLD_IDS,
     _checkpoint_paths,
-    _monifeixing_fold_inputs,
     _validate_checkpoint_metadata,
 )
-from vestibular_fusion.evaluation.io import write_csv
 from vestibular_fusion.training.data import FoldProtocol
 
 
@@ -122,49 +121,6 @@ def test_monifeixing_prototypes_use_locked_float64_normalization():
     np.testing.assert_array_equal(actual, expected.astype(np.float32))
 
 
-def test_monifeixing_rows_recover_local_index_from_trained_a1(tmp_path: Path):
-    fold_root = tmp_path / "outer_inputs" / "fold_1"
-    write_csv(
-        fold_root / "outer_rows.csv",
-        [
-            {
-                "sample_index": index,
-                "subject_id": "test_1",
-                "session": "rest1",
-                "window_index": index,
-                "y_true": index % 2,
-            }
-            for index in range(8)
-        ],
-    )
-    np.savez_compressed(
-        fold_root / "outer_arrays.npz", fixed_margins=np.zeros((8, 2), dtype=np.float64)
-    )
-    target_rows = [
-        {
-            "sample_index": index,
-            "subject_id": "test_1",
-            "local_index": 10 + index,
-            "mambakan_score": 0.5,
-        }
-        for index in range(8)
-    ]
-    moments = {"test_1": np.arange(18, dtype=np.float64)[:, None]}
-
-    rows, margins, aligned = _monifeixing_fold_inputs(
-        tmp_path,
-        "fold_1",
-        target_rows,
-        0.5,
-        moments,
-        _protocol(),
-    )
-
-    assert [row["local_index"] for row in rows] == list(range(10, 18))
-    assert margins.shape == (8, 3)
-    np.testing.assert_array_equal(aligned[:, 0], np.arange(10, 18))
-
-
 def test_cli_exposes_trained_evaluate_command():
     args = build_parser().parse_args(
         [
@@ -179,3 +135,50 @@ def test_cli_exposes_trained_evaluate_command():
     )
     assert args.command == "evaluate"
     assert args.dataset == "vrq"
+
+
+def test_fixed_view_selection_is_source_only_and_deterministic():
+    from types import SimpleNamespace
+
+    records = {}
+    samples = []
+    features = {family: {} for family in ("spectral_topography", "covariance_tangent")}
+    sample_index = 0
+    for subject_index, subject in enumerate(("s1", "s2", "s3", "s4")):
+        labels = np.asarray([0, 0, 0, 1, 1, 1], dtype=np.int64)
+        values = np.asarray(
+            [[float(label), float(subject_index), float(window)] for window, label in enumerate(labels)],
+            dtype=np.float64,
+        )
+        records[subject] = SubjectRecord(
+            windows=values.astype(np.float32),
+            tokens=values.astype(np.float32),
+            labels=labels,
+            sessions=["rest01"] * 3 + ["task"] * 3,
+        )
+        for local_index in range(len(labels)):
+            samples.append(
+                SimpleNamespace(
+                    sample_index=sample_index,
+                    subject_id=subject,
+                    local_index=local_index,
+                )
+            )
+            sample_index += 1
+        for family in features:
+            features[family][subject] = values.copy()
+    bank = FeatureBank(
+        records=records,
+        samples=samples,
+        encoder_state={},
+        audit=AuditMetadata({}, "frozen", {}),
+    )
+
+    first = select_fixed_view_configs(features, bank, ["s1", "s2"], ["s3", "s4"], 1001)
+    second = select_fixed_view_configs(features, bank, ["s1", "s2"], ["s3", "s4"], 1001)
+
+    assert first == second
+    configs, report = first
+    assert set(configs) == {"spectral_topography", "covariance_tangent"}
+    assert report["selection_source"] == "v1_raw_features_source_train_validation"
+    assert all(item["candidate_count"] == 24 for item in report["families"].values())

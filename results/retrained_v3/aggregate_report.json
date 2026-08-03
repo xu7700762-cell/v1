@@ -1,0 +1,53 @@
+{
+  "status": "complete",
+  "experiment_id": "retrained_v3_raw_fixed_views",
+  "evaluation": "trained_a1_raw_fixed_views",
+  "protocol": {
+    "state_fusion": "(R1 + R2 + 2R4) / 4",
+    "severity": "R4-only source-fit LogisticRegression",
+    "forward_context": "[t, t+1, t+2] with right-edge replication",
+    "split_seed": 42,
+    "training_seed": 1001,
+    "fixed_view_generation": "v1_raw_source_train_validation_selection",
+    "fixed_view_candidate_grid": {
+      "pca_dim": [16, 32],
+      "C": [0.1, 1.0],
+      "subject_normalization": [false, true],
+      "threshold": [0.4, 0.5, 0.6]
+    },
+    "historical_fixed_margins_used": false,
+    "historical_fixed_view_configs_used": false,
+    "reference_checkpoint_used": false,
+    "pair_severity_head_used_for_prediction": false
+  },
+  "training": {
+    "outer_folds": 5,
+    "encoder_frozen": true,
+    "trainable_modules": ["A1", "PairSeverityHead"],
+    "loss": "L_state + 0.3 * L_severity",
+    "checkpoint_schema": "trained_fold_refit_v1"
+  },
+  "datasets": {
+    "monifeixing": {
+      "fold_count": 5,
+      "state_accuracy": 0.850982271202683,
+      "severity_accuracy": 0.888888888888889
+    },
+    "vrq": {
+      "fold_count": 5,
+      "state_accuracy": 0.810043668122271,
+      "severity_accuracy": 0.739130434782609
+    },
+    "city": {
+      "fold_count": 5,
+      "state_accuracy": 0.772021834528524,
+      "severity_accuracy": 0.662337662337662
+    }
+  },
+  "validation": {
+    "pytest": "22 passed",
+    "raw_fixed_output_audit": "passed",
+    "absolute_paths_in_public_report": false,
+    "raw_predictions_in_public_report": false
+  }
+}

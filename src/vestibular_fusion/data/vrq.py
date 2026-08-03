@@ -19,6 +19,10 @@ WINDOW_SIZE = 1280
 STRIDE = 1280
 CHANNEL_INDICES = tuple(range(22)) + tuple(range(24, 32))
 FEATURE_FAMILIES = ("spectral_topography", "covariance_tangent")
+FIXED_VIEW_PCA_DIMS = (16, 32)
+FIXED_VIEW_C_VALUES = (0.1, 1.0)
+FIXED_VIEW_NORMALIZATION = (False, True)
+FIXED_VIEW_THRESHOLDS = (0.4, 0.5, 0.6)
 
 
 @dataclass(frozen=True)
@@ -398,6 +402,100 @@ def fit_fixed_view(
         "classifier": classifier,
         "source_subjects": source_subjects,
     }
+
+
+def _fixed_view_metrics(prediction: dict[str, np.ndarray]) -> dict[str, float]:
+    labels = np.asarray(prediction["labels"], dtype=np.int64)
+    scores = np.asarray(prediction["scores"], dtype=np.float64)
+    subjects = np.asarray(prediction["subjects"], dtype=object)
+    threshold = float(prediction["threshold"])
+    predictions = (scores >= threshold).astype(np.int64)
+    subject_scores = []
+    for subject in sorted(set(subjects.tolist()), key=subject_sort_key):
+        mask = subjects == subject
+        subject_scores.append(
+            float(balanced_accuracy_score(labels[mask], predictions[mask]))
+        )
+    return {
+        "balanced_accuracy": float(balanced_accuracy_score(labels, predictions)),
+        "subject_macro_balanced_accuracy": float(np.mean(subject_scores)),
+    }
+
+
+def select_fixed_view_configs(
+    features: dict[str, dict[str, np.ndarray]],
+    bank: FeatureBank,
+    source_train_subjects: list[str],
+    source_val_subjects: list[str],
+    seed: int,
+) -> tuple[dict[str, dict], dict]:
+    """Select fixed-view settings using only the source train/validation subjects.
+
+    This intentionally rebuilds the fixed R1/R2 branches from the current raw
+    feature bank. No historical fixed-view configuration or precomputed margin
+    array is consulted.
+    """
+    if not source_train_subjects or not source_val_subjects:
+        raise ValueError("Fixed-view selection requires non-empty source train/val subjects")
+    selected = {}
+    reports = {
+        "selection_source": "v1_raw_features_source_train_validation",
+        "source_train_subjects": list(source_train_subjects),
+        "source_val_subjects": list(source_val_subjects),
+        "candidate_grid": {
+            "pca_dim": list(FIXED_VIEW_PCA_DIMS),
+            "C": list(FIXED_VIEW_C_VALUES),
+            "subject_normalization": list(FIXED_VIEW_NORMALIZATION),
+            "threshold": list(FIXED_VIEW_THRESHOLDS),
+        },
+        "families": {},
+    }
+    for family in FEATURE_FAMILIES:
+        best_config = None
+        best_metrics = None
+        best_key = None
+        candidate_count = 0
+        for subject_normalization in FIXED_VIEW_NORMALIZATION:
+            for pca_dim in FIXED_VIEW_PCA_DIMS:
+                for c_value in FIXED_VIEW_C_VALUES:
+                    for threshold in FIXED_VIEW_THRESHOLDS:
+                        config = {
+                            "subject_normalization": bool(subject_normalization),
+                            "pca_dim": int(pca_dim),
+                            "C": float(c_value),
+                            "threshold": float(threshold),
+                        }
+                        prediction, _ = fit_fixed_view(
+                            features[family],
+                            bank,
+                            list(source_train_subjects),
+                            list(source_val_subjects),
+                            config,
+                            int(seed),
+                        )
+                        metrics = _fixed_view_metrics(prediction)
+                        key = (
+                            metrics["subject_macro_balanced_accuracy"],
+                            metrics["balanced_accuracy"],
+                            -abs(float(threshold) - 0.5),
+                            -int(subject_normalization),
+                            -int(pca_dim),
+                            -float(c_value),
+                        )
+                        candidate_count += 1
+                        if best_key is None or key > best_key:
+                            best_key = key
+                            best_config = config
+                            best_metrics = metrics
+        if best_config is None or best_metrics is None:
+            raise RuntimeError(f"No fixed-view candidate was evaluated for {family}")
+        selected[family] = best_config
+        reports["families"][family] = {
+            "candidate_count": candidate_count,
+            "selected_config": best_config,
+            "validation_metrics": best_metrics,
+        }
+    return selected, reports
 
 
 def logit(values: np.ndarray | float) -> np.ndarray:

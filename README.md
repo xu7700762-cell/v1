@@ -13,6 +13,7 @@ VestibularFusion 是一个面向生物信号分析的可复现实验项目。项
 - 使用 A1 完成状态分类并生成 R1、R2、R4 证据；
 - 在训练接口中使用 PairSeverityHead 提供辅助严重度监督；
 - 使用 `evaluate` 将五折重新训练 checkpoint 的 A1 代入统一预测协议；
+- 在 `evaluate` 中从当前原始数据重新生成 fixed-view 特征，并只用 source-train/source-val 选择配置；
 - 在锁定复现中使用 R4-only 标量特征与逻辑回归评估严重度；
 - 支持三窗口前向上下文和 session 边界处理；
 - 支持跨被试五折划分，避免同一被试同时出现在训练集和评估集；
@@ -144,6 +145,7 @@ src/vestibular_fusion/
 - 状态分支只计算并优化 `L_state`；历史遗留的 `direction_loss` 和 `ranking_loss` 不属于当前主协议，已从训练路径移除；
 - `train` 会训练 PairSeverityHead，并在训练 checkpoint 中保存 `severity_head_state_dict`；
 - `evaluate` 要求 `fold_1..fold_5/checkpoint.pt` 完整存在，检查训练 checkpoint 元数据，但最终预测只加载 `model_state_dict`；
+- `evaluate` 的 R1/R2 fixed-view 分支由当前 raw feature bank 重新计算；每个 fold 只用 source-train/source-val 在固定候选网格中选择配置，不读取历史 `fixed_margins` 或历史 fixed-view 配置；
 - `reproduce` 不加载 `severity_head_state_dict`，而是在每个外层 fold 的 source subjects 上重新拟合 R4-only 逻辑回归；
 - A1 前向路径已移除不参与计算的 gated 分支和无效缩放参数；旧 checkpoint 中对应的 `mamba_scale`、`support_raw_scale`、`gated_kan.*`、`gated_post_norm.*` 键会在加载时显式迁移，其他活动参数仍严格校验；
 - `VestibularFusionModel` 是 smoke 与正式训练共用的 A1/PairSeverityHead 容器；正式复现仍只加载 A1 checkpoint，并使用独立的 R4-only 评估函数；
@@ -169,15 +171,22 @@ src/vestibular_fusion/
 
 ## 本次重新训练结果
 
-本次重新训练输出位于被 Git 忽略的 `outputs/retrained_v2/` 和 `outputs/retrained_v2_eval/`。训练使用固定的预训练 Temporal Encoder，但该 Encoder 全程冻结；只有 A1 和 `PairSeverityHead` 通过联合损失更新。最终评估只加载新生成的 `checkpoint.pt` 中的 A1 权重，不加载旧的 `refit.pt` 或其他历史模型资产；`PairSeverityHead` 只提供训练期辅助监督，不参与最终状态或严重度预测。
+本次重新训练输出位于被 Git 忽略的 `outputs/retrained_v3/` 和 `outputs/retrained_v3_eval/`。训练使用固定的预训练 Temporal Encoder，但该 Encoder 全程冻结；只有 A1 和 `PairSeverityHead` 通过联合损失更新。最终评估只加载新生成的 `checkpoint.pt` 中的 A1 权重，不加载旧的 `refit.pt`，也不读取历史 `fixed_margins` 或历史 fixed-view 配置；`PairSeverityHead` 只提供训练期辅助监督，不参与最终状态或严重度预测。
+
+每个 fold 的 fixed-view 选择都在当前原始数据上重新执行，候选网格为 `pca_dim ∈ {16, 32}`、`C ∈ {0.1, 1.0}`、是否 subject normalization 和阈值 `∈ {0.4, 0.5, 0.6}`。选择依据只使用 source-train/source-val，outer-test 不参与配置选择。
 
 | 数据集 | 重新训练状态 ACC | 重新训练高低眩晕 ACC |
 |---|---:|---:|
-| monifeixing | 87.49% | 83.33% |
-| VRQ | 80.48% | 69.57% |
-| 城市巡航 | 77.47% | 65.58% |
+| monifeixing | 85.10% | 88.89% |
+| VRQ | 81.00% | 73.91% |
+| 城市巡航 | 77.20% | 66.23% |
 
-这些数字是当前环境中重新训练得到的结果，不应与上面的锁定参考结果混写。重新训练结果没有全部达到锁定参考状态 ACC，因此本项目不能据此声称完全复现锁定参考结果。该训练流程也不是完整端到端训练：Temporal Encoder 没有更新。严重度仍属于 no-inner 非嵌套诊断，包含无标签目标域校准，因此不能描述为 strict blind test。
+这些数字是当前环境中重新生成 fixed-view 分支并重新训练得到的结果，不应与上面的锁定参考结果混写。重新训练结果没有全部达到锁定参考状态 ACC，因此本项目不能据此声称完全复现锁定参考结果。该训练流程也不是完整端到端训练：Temporal Encoder 没有更新。严重度仍属于 no-inner 非嵌套诊断，包含无标签目标域校准，因此不能描述为 strict blind test。
+
+本次重新训练的脱敏结果文件位于：
+
+- [`results/retrained_v3/RESULTS.md`](results/retrained_v3/RESULTS.md)
+- [`results/retrained_v3/aggregate_report.json`](results/retrained_v3/aggregate_report.json)
 
 完整参考结果位于：
 
@@ -283,12 +292,12 @@ done
 python -m vestibular_fusion evaluate \
   --config configs/paths.local.json \
   --dataset vrq \
-  --checkpoint-root outputs/retrained_v2/vrq \
-  --output-root outputs/retrained_v2_eval/vrq \
+  --checkpoint-root outputs/retrained_v3/vrq \
+  --output-root outputs/retrained_v3_eval/vrq \
   --device cuda
 ```
 
-`evaluate` 会严格检查五个 fold 的 checkpoint、数据集、fold 编号和 source/test 被试清单。它只加载新训练 checkpoint 的 A1 权重，并重新生成 embeddings 与 R4 moments；随后使用 source 内固定的 calibration-train subjects 重拟合类别 prototype，使用互斥的 calibration-val subjects 重选 A1 threshold，再重新生成 R1/R2/R4 融合输入。状态仍使用 `(R1+R2+2R4)/4`，严重度仍使用 R4 + source-fit Logistic Regression。`severity_head_state_dict` 仅作为训练完整性记录，不会在最终预测中加载。结果写入独立的 `aggregate_report.json`，不会与参考复现结果混合。
+`evaluate` 会严格检查五个 fold 的 checkpoint、数据集、fold 编号和 source/test 被试清单。它只加载新训练 checkpoint 的 A1 权重，并重新生成 embeddings、fixed-view R1/R2 和 R4 moments；fixed-view 配置只在 source-train/source-val 上选择，outer-test 不参与选择。随后使用 source 内固定的 calibration-train subjects 重拟合类别 prototype，使用互斥的 calibration-val subjects 重选 A1 threshold，再生成 R1/R2/R4 融合输入。状态仍使用 `(R1+R2+2R4)/4`，严重度仍使用 R4 + source-fit Logistic Regression。`severity_head_state_dict` 仅作为训练完整性记录，不会在最终预测中加载。结果写入独立的 `aggregate_report.json`，不会与参考复现结果混合。
 
 | 命令 | A1 权重来源 | 状态协议 | 严重度协议 |
 |---|---|---|---|
