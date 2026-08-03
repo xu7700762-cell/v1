@@ -9,6 +9,7 @@ import torch
 from scipy.io import loadmat
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import balanced_accuracy_score
 from sklearn.preprocessing import StandardScaler
 
 from .types import AuditMetadata, FeatureBank, SubjectRecord
@@ -276,6 +277,42 @@ def deep_rows(
             )
     rows.sort(key=lambda row: row["sample_index"])
     return rows
+
+
+def _threshold_metrics(rows: list[dict], threshold: float) -> dict:
+    labels = np.asarray([row["y_true"] for row in rows], dtype=np.int64)
+    scores = np.asarray([row["mambakan_score"] for row in rows], dtype=np.float64)
+    predictions = (scores >= float(threshold)).astype(np.int64)
+    subjects = np.asarray([row["subject_id"] for row in rows], dtype=object)
+    subject_scores = []
+    for subject in sorted(set(subjects.tolist()), key=subject_sort_key):
+        mask = subjects == subject
+        subject_scores.append(float(balanced_accuracy_score(labels[mask], predictions[mask])))
+    return {
+        "threshold": float(threshold),
+        "balanced_accuracy": float(balanced_accuracy_score(labels, predictions)),
+        "subject_macro_balanced_accuracy": float(np.mean(subject_scores)),
+    }
+
+
+def choose_score_threshold(rows: list[dict]) -> tuple[float, dict]:
+    if not rows:
+        raise ValueError("Source-only threshold selection requires non-empty rows")
+    best_threshold = 0.5
+    best_metrics = _threshold_metrics(rows, best_threshold)
+    best_key = (-np.inf, -np.inf, -np.inf)
+    for threshold in np.round(np.arange(0.10, 0.9001, 0.01), 2):
+        metrics = _threshold_metrics(rows, float(threshold))
+        key = (
+            metrics["subject_macro_balanced_accuracy"],
+            metrics["balanced_accuracy"],
+            -abs(float(threshold) - 0.5),
+        )
+        if key > best_key:
+            best_threshold = float(threshold)
+            best_metrics = metrics
+            best_key = key
+    return best_threshold, best_metrics
 
 
 def fixed_feature_bank(bank: FeatureBank) -> dict[str, dict[str, np.ndarray]]:

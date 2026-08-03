@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 from .config import load_config
+from .evaluate import run_evaluate
 from .preflight import run_preflight
 from .reproduce import run_reproduce
 from .train import run_train
@@ -14,7 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="vestibular_fusion")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    for name in ("preflight", "reproduce", "train"):
+    for name in ("preflight", "reproduce", "train", "evaluate"):
         command = sub.add_parser(name)
         command.add_argument("--config", required=True)
     reproduce = sub.choices["reproduce"]
@@ -27,6 +29,11 @@ def build_parser() -> argparse.ArgumentParser:
     train.add_argument("--device", default="cuda")
     train.add_argument("--smoke", action="store_true")
     train.add_argument("--output-root", type=Path)
+    evaluate = sub.choices["evaluate"]
+    evaluate.add_argument("--dataset", choices=("monifeixing", "vrq", "city"), required=True)
+    evaluate.add_argument("--checkpoint-root", type=Path)
+    evaluate.add_argument("--device", default="cuda")
+    evaluate.add_argument("--output-root", type=Path)
 
     verify = sub.add_parser("verify")
     verify.add_argument("--actual", required=True)
@@ -49,8 +56,19 @@ def main(argv: list[str] | None = None) -> int:
         if set(args.datasets) == {"monifeixing", "vrq", "city"}:
             verify_report(output_root / "aggregate_report.json")
         return 0
+    if args.command == "evaluate":
+        run_preflight(config, reference_assets=False)
+        checkpoint_root = args.checkpoint_root or (
+            config["output_root"] / "training" / args.dataset
+        )
+        output_root = args.output_root or (
+            config["output_root"] / "trained_evaluation" / args.dataset
+        )
+        report = run_evaluate(config, args.dataset, checkpoint_root, output_root, args.device)
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
     if args.command == "train":
-        run_preflight(config)
+        run_preflight(config, reference_assets=False)
         return int(
             run_train(
                 config,

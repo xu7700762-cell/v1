@@ -11,7 +11,19 @@ PROTOCOL = {
     "context_crosses_session": False,
     "state_fusion": "(R1 + R2 + 2R4) / 4",
     "severity": "R4-only",
-    "checkpoint_retraining": False,
+    "checkpoint_retraining": True,
+    "training_schedule": "source_validation_selection_then_source_refit",
+    "selection_key": [
+        "-severity_BCE",
+        "severity_balanced_accuracy",
+        "severity_AUROC",
+        "state_subject_macro_balanced_accuracy",
+    ],
+    "selection_max_epochs": 50,
+    "selection_patience": 10,
+    "refit_epochs": "selected_best_epoch",
+    "severity_training_examples_per_batch": 5,
+    "severity_class_and_subject_weighting": True,
     "interpretation": "optimistic_non_nested_severity_diagnostic",
 }
 

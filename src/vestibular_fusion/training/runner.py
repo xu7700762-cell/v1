@@ -1,49 +1,80 @@
 from __future__ import annotations
 
-import json
+import math
 import random
-from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+from sklearn.metrics import balanced_accuracy_score, roc_auc_score
 
-from ..data import city, monifeixing, vrq
+from ..data import monifeixing, vrq
 from ..data.features import (
     assemble_domain_batch,
     domain_batches,
     leave_one_subject_out_logits,
 )
-from ..evaluation.io import read_csv, read_json, write_json
-from ..evaluation.metrics import subject_sort_key
-from ..model.a1 import DirectionalMambaKAN
+from ..evaluation.io import write_json
 from ..model.encoder import TemporalEncoder
 from ..model.main import VestibularFusionModel
-from ..model.severity import PairSeverityHead
+from .data import SeverityExample, load_training_dataset, weighted_examples
 
 
-@dataclass(frozen=True)
-class SeverityExample:
-    subject_id: str
-    reference_session: str
-    task_session: str
-    label: int
+SEVERITY_WEIGHT = 0.3
+TRAINING_SEED = 1001
+MAX_EPOCHS = 50
+PATIENCE = 10
+DOMAINS_PER_BATCH = 5
+TRIALS_PER_CLASS = 5
+SEVERITY_BATCH_SIZE = 5
+SEVERITY_WINDOWS_TRAIN = 5
+SEVERITY_WINDOWS_EVAL = 11
+HEAD_LR = 1e-4
+WEIGHT_DECAY = 1e-3
+DROPOUT = 0.25
+GRAD_CLIP = 1.0
 
 
 def _parameter_snapshot(model: torch.nn.Module) -> dict[str, torch.Tensor]:
     return {name: value.detach().cpu().clone() for name, value in model.named_parameters()}
 
 
-def _sample_session_indices(record, session: str, count: int) -> list[int]:
-    candidates = [index for index, value in enumerate(record.sessions) if str(value) == session]
-    if len(candidates) < count:
-        raise ValueError(f"{session} has only {len(candidates)} windows")
+def _parameter_probe(model: torch.nn.Module) -> torch.Tensor:
+    values = [
+        parameter.detach().float().reshape(-1).cpu()
+        for parameter in model.parameters()
+        if parameter.requires_grad
+    ]
+    return torch.cat(values) if values else torch.empty(0)
+
+
+def _grad_norm(model: torch.nn.Module) -> float:
+    total = 0.0
+    for parameter in model.parameters():
+        if parameter.grad is not None:
+            total += float(parameter.grad.detach().float().square().sum().cpu())
+    return math.sqrt(total)
+
+
+def _seed_everything(seed: int) -> None:
+    random.seed(int(seed))
+    np.random.seed(int(seed))
+    torch.manual_seed(int(seed))
+
+
+def _sample_session_indices(
+    record, session: str, count: int, *, training: bool, rng: random.Random
+) -> list[int]:
+    sessions = np.asarray(record.sessions, dtype=object)
+    candidates = np.flatnonzero(sessions == str(session)).astype(np.int64)
+    count = min(int(count), len(candidates))
+    if count < 2:
+        raise ValueError(f"{session} has fewer than two severity windows")
+    if training:
+        return [int(value) for value in rng.sample(candidates.tolist(), count)]
     positions = np.rint(np.linspace(0, len(candidates) - 1, count)).astype(np.int64)
-    if len(np.unique(positions)) != count:
-        raise ValueError(f"{session} cannot provide {count} unique windows")
-    return [candidates[int(position)] for position in positions]
+    return [int(candidates[position]) for position in positions]
 
 
 def _pair_logits(
@@ -53,52 +84,432 @@ def _pair_logits(
     device: torch.device,
     *,
     windows: int,
+    training: bool,
+    rng: random.Random,
 ) -> torch.Tensor:
+    if not examples:
+        raise ValueError("Severity loss/evaluation requires at least one example")
     features = []
     for example in examples:
         record = bank.records[example.subject_id]
-        reference = _sample_session_indices(record, example.reference_session, windows)
-        task = _sample_session_indices(record, example.task_session, windows)
+        reference = _sample_session_indices(
+            record,
+            example.reference_session,
+            windows,
+            training=training,
+            rng=rng,
+        )
+        task = _sample_session_indices(
+            record,
+            example.task_session,
+            windows,
+            training=training,
+            rng=rng,
+        )
         indices = reference + task
         tokens = torch.as_tensor(record.tokens[indices], dtype=torch.float32, device=device)
         sequence = model.a1.encode_sequence(tokens)
         normalized = model.a1.normalize_subject(sequence, sequence)
         embeddings = model.a1.pool_embedding(normalized)
-        features.append(model.severity_head.features(embeddings[:windows], embeddings[windows:]))
+        features.append(
+            model.severity_head.features(embeddings[: len(reference)], embeddings[len(reference) :])
+        )
     return model.severity_head(torch.stack(features))
 
 
-def _monifeixing_protocol(config: dict, fold_id: str):
-    root = (
-        Path(config["paths"]["asset_root"])
-        / "vr_ssq_regression"
-        / "artifacts_fair_joint_lambda0p3"
-        / "monifeixing"
-        / "lambda0p3"
-        / "seed42"
-        / "full"
-    )
-    report = read_json(root / "report.json")
-    split = report["identity_audit"]["folds"][fold_id]
-    source = list(split["source_outer_train_subjects"])
-    labels = {
-        str(row["subject_id"]): int(row["y_true"])
-        for row in read_csv(root / "severity_predictions.csv")
+def _severity_metrics(logits: torch.Tensor, examples: list[SeverityExample]) -> dict:
+    labels = np.asarray([int(example.label) for example in examples], dtype=np.int64)
+    scores = torch.sigmoid(logits).detach().float().cpu().numpy()
+    predictions = (scores >= 0.5).astype(np.int64)
+    clipped = np.clip(scores, 1e-7, 1.0 - 1e-7)
+    subjects = np.asarray([example.subject_id for example in examples], dtype=object)
+    subject_scores = [
+        balanced_accuracy_score(labels[subjects == subject], predictions[subjects == subject])
+        for subject in sorted(set(subjects.tolist()))
+    ]
+    if set(labels.tolist()) != {0, 1}:
+        raise ValueError("Severity validation requires both classes")
+    return {
+        "BCE": float(-np.mean(labels * np.log(clipped) + (1 - labels) * np.log(1 - clipped))),
+        "balanced_accuracy": float(balanced_accuracy_score(labels, predictions)),
+        "subject_macro_balanced_accuracy": float(np.mean(subject_scores)),
+        "AUROC": float(roc_auc_score(labels, scores)),
     }
-    bank = monifeixing.build_raw_bank(
-        Path(config["paths"]["monifeixing_data_root"]),
-        Path(config["paths"]["monifeixing_initial_encoder"]),
-        torch.device("cpu"),
+
+
+def _evaluate_severity(
+    model: VestibularFusionModel,
+    bank,
+    examples: list[SeverityExample],
+    device: torch.device,
+) -> dict:
+    model.eval()
+    with torch.no_grad():
+        logits = _pair_logits(
+            model,
+            bank,
+            examples,
+            device,
+            windows=SEVERITY_WINDOWS_EVAL,
+            training=False,
+            rng=random.Random(0),
+        )
+    return _severity_metrics(logits, examples)
+
+
+def _training_module(dataset: str):
+    return monifeixing if dataset == "monifeixing" else vrq
+
+
+def _validation_state_metrics(
+    model: VestibularFusionModel,
+    dataset: str,
+    bank,
+    train_subjects: list[str],
+    val_subjects: list[str],
+    fold_id: str,
+    device: torch.device,
+) -> dict:
+    module = _training_module(dataset)
+    model.eval()
+    with torch.no_grad():
+        embeddings, _ = module.extract_views(model.a1, bank, train_subjects + val_subjects, device, 128)
+    prototypes = module.fit_prototypes(embeddings, bank, train_subjects)
+    rows = vrq.deep_rows(
+        model.a1,
+        embeddings,
+        prototypes,
+        bank,
+        val_subjects,
+        fold_id,
+        "validation",
     )
-    return bank, source, [SeverityExample(subject, "rest1", "rest2", labels[subject]) for subject in source]
+    labels = np.asarray([int(row["y_true"]) for row in rows], dtype=np.int64)
+    scores = np.asarray([float(row["mambakan_score"]) for row in rows], dtype=np.float64)
+    predictions = (scores >= 0.5).astype(np.int64)
+    subjects = np.asarray([str(row["subject_id"]) for row in rows], dtype=object)
+    subject_scores = [
+        balanced_accuracy_score(labels[subjects == subject], predictions[subjects == subject])
+        for subject in sorted(set(subjects.tolist()))
+    ]
+    return {
+        "threshold": 0.5,
+        "balanced_accuracy": float(balanced_accuracy_score(labels, predictions)),
+        "subject_macro_balanced_accuracy": float(np.mean(subject_scores)),
+    }
+
+
+def _train_epoch(
+    model: VestibularFusionModel,
+    optimizer: torch.optim.Optimizer,
+    scaler: torch.amp.GradScaler,
+    bank,
+    train_indices: list[int],
+    examples: list[SeverityExample],
+    epoch: int,
+    device: torch.device,
+) -> dict:
+    if not examples:
+        raise ValueError("A refit epoch requires source severity examples")
+    batches = domain_batches(
+        bank,
+        train_indices,
+        seed=TRAINING_SEED + int(epoch) * 100003,
+        domains_per_batch=DOMAINS_PER_BATCH,
+        trials_per_class=TRIALS_PER_CLASS,
+    )
+    rng = random.Random(TRAINING_SEED + int(epoch) * 200003)
+    ordered_examples = list(examples)
+    rng.shuffle(ordered_examples)
+    batch_size = min(SEVERITY_BATCH_SIZE, len(ordered_examples))
+    model.train()
+    totals = {"loss": 0.0, "state_loss": 0.0, "severity_loss": 0.0}
+    steps = 0
+    max_a1_grad = 0.0
+    max_head_grad = 0.0
+    for subjects, local_indices in batches:
+        start = (steps * batch_size) % len(ordered_examples)
+        current = [
+            ordered_examples[(start + offset) % len(ordered_examples)]
+            for offset in range(batch_size)
+        ]
+        tokens, _, labels = assemble_domain_batch(bank, subjects, local_indices)
+        tokens = tokens.to(device, non_blocking=True)
+        labels = labels.to(device, non_blocking=True)
+        optimizer.zero_grad(set_to_none=True)
+        with torch.autocast(
+            device_type="cuda", dtype=torch.float16, enabled=device.type == "cuda"
+        ):
+            embeddings = model.forward_token_batch(tokens)
+            state_logits = leave_one_subject_out_logits(
+                embeddings, labels, model.a1.temperature()
+            )
+            state_loss = F.binary_cross_entropy_with_logits(state_logits, labels)
+            severity_logits = _pair_logits(
+                model,
+                bank,
+                current,
+                device,
+                windows=SEVERITY_WINDOWS_TRAIN,
+                training=True,
+                rng=rng,
+            )
+            severity_labels = severity_logits.new_tensor(
+                [float(example.label) for example in current]
+            )
+            weights = severity_logits.new_tensor(
+                [float(example.weight) for example in current]
+            )
+            severity_loss = (
+                F.binary_cross_entropy_with_logits(
+                    severity_logits, severity_labels, reduction="none"
+                )
+                * weights
+            ).sum() / weights.sum().clamp_min(1e-6)
+            loss = state_loss + SEVERITY_WEIGHT * severity_loss
+        if not bool(torch.isfinite(loss)):
+            raise FloatingPointError("Non-finite refit multitask loss")
+        scaler.scale(loss).backward()
+        a1_grad = _grad_norm(model.a1)
+        head_grad = _grad_norm(model.severity_head)
+        if min(a1_grad, head_grad) <= 0.0:
+            raise AssertionError("A1 and PairSeverityHead must both receive gradients")
+        scaler.unscale_(optimizer)
+        torch.nn.utils.clip_grad_norm_(
+            [parameter for parameter in model.parameters() if parameter.requires_grad],
+            GRAD_CLIP,
+        )
+        scaler.step(optimizer)
+        scaler.update()
+        totals["loss"] += float(loss.detach().cpu())
+        totals["state_loss"] += float(state_loss.detach().cpu())
+        totals["severity_loss"] += float(severity_loss.detach().cpu())
+        max_a1_grad = max(max_a1_grad, a1_grad)
+        max_head_grad = max(max_head_grad, head_grad)
+        steps += 1
+    if steps == 0:
+        raise AssertionError("Refit epoch produced no optimization steps")
+    return {
+        **{key: value / steps for key, value in totals.items()},
+        "steps": steps,
+        "max_a1_grad_norm": max_a1_grad,
+        "max_severity_head_grad_norm": max_head_grad,
+    }
+
+
+def _new_model(device: torch.device) -> VestibularFusionModel:
+    return VestibularFusionModel(a1_seed=TRAINING_SEED, dropout=DROPOUT).to(device)
+
+
+def _select_epoch(
+    dataset: str,
+    fold_id: str,
+    bank,
+    protocol,
+    device: torch.device,
+    output_root: Path,
+) -> tuple[int, dict]:
+    _seed_everything(TRAINING_SEED)
+    model = _new_model(device)
+    optimizer = torch.optim.AdamW(
+        [parameter for parameter in model.parameters() if parameter.requires_grad],
+        lr=HEAD_LR,
+        weight_decay=WEIGHT_DECAY,
+    )
+    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
+    source_train = list(protocol.calibration_train_subjects)
+    source_val = list(protocol.calibration_val_subjects)
+    path_weighting = dataset == "city"
+    all_examples = list(protocol.source_examples)
+    train_examples = list(
+        weighted_examples(
+            [example for example in all_examples if example.subject_id in set(source_train)],
+            path_weighting=path_weighting,
+        )
+    )
+    val_examples = [example for example in all_examples if example.subject_id in set(source_val)]
+    train_indices = [
+        sample.sample_index
+        for sample in bank.samples
+        if sample.subject_id in set(source_train)
+    ]
+    initial_a1 = _parameter_probe(model.a1)
+    initial_head = _parameter_probe(model.severity_head)
+    best_a1 = {key: value.detach().cpu().clone() for key, value in model.a1.state_dict().items()}
+    best_head = {
+        key: value.detach().cpu().clone()
+        for key, value in model.severity_head.state_dict().items()
+    }
+    best_epoch = 0
+    best_key = (-math.inf, -math.inf, -math.inf, -math.inf)
+    stale = 0
+    history = []
+    for epoch in range(1, MAX_EPOCHS + 1):
+        training = _train_epoch(
+            model, optimizer, scaler, bank, train_indices, train_examples, epoch, device
+        )
+        state = _validation_state_metrics(
+            model, dataset, bank, source_train, source_val, fold_id, device
+        )
+        severity = _evaluate_severity(model, bank, val_examples, device)
+        key = (
+            -float(severity["BCE"]),
+            float(severity["balanced_accuracy"]),
+            float(severity["AUROC"]),
+            float(state["subject_macro_balanced_accuracy"]),
+        )
+        if key > best_key:
+            best_key = key
+            best_epoch = epoch
+            best_a1 = {
+                key_name: value.detach().cpu().clone()
+                for key_name, value in model.a1.state_dict().items()
+            }
+            best_head = {
+                key_name: value.detach().cpu().clone()
+                for key_name, value in model.severity_head.state_dict().items()
+            }
+            stale = 0
+        else:
+            stale += 1
+        row = {
+            "epoch": epoch,
+            "training": training,
+            "validation_state": state,
+            "validation_severity": severity,
+            "selection_key": list(key),
+            "best_epoch": best_epoch,
+            "patience": stale,
+        }
+        history.append(row)
+        write_json(output_root / "selection_history.json", history)
+        print(
+            f"{fold_id} selection epoch={epoch} state={training['state_loss']:.5f} "
+            f"severity={training['severity_loss']:.5f} "
+            f"val_severity_bce={severity['BCE']:.5f} best={best_epoch}",
+            flush=True,
+        )
+        if stale >= PATIENCE:
+            break
+    if best_epoch <= 0:
+        raise RuntimeError(f"{fold_id} failed to select a source-validation epoch")
+    model.a1.load_state_dict(best_a1, strict=True)
+    model.severity_head.load_state_dict(best_head, strict=True)
+    selection = {
+        "best_epoch": best_epoch,
+        "validation_key": list(best_key),
+        "max_epochs": MAX_EPOCHS,
+        "patience": PATIENCE,
+        "a1_delta_probe_l2": float(torch.linalg.vector_norm(_parameter_probe(model.a1) - initial_a1)),
+        "severity_head_delta_probe_l2": float(
+            torch.linalg.vector_norm(_parameter_probe(model.severity_head) - initial_head)
+        ),
+        "encoder_grad_norm": 0.0,
+        "encoder_delta_probe_l2": 0.0,
+        "history": history,
+    }
+    if selection["a1_delta_probe_l2"] <= 0.0 or selection["severity_head_delta_probe_l2"] <= 0.0:
+        raise AssertionError("Source selection did not update both trainable branches")
+    write_json(output_root / "selection_report.json", selection)
+    del model
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+    return best_epoch, selection
+
+
+def _refit(
+    dataset: str,
+    fold_id: str,
+    bank,
+    protocol,
+    best_epoch: int,
+    device: torch.device,
+    output_root: Path,
+) -> dict:
+    _seed_everything(TRAINING_SEED)
+    model = _new_model(device)
+    optimizer = torch.optim.AdamW(
+        [parameter for parameter in model.parameters() if parameter.requires_grad],
+        lr=HEAD_LR,
+        weight_decay=WEIGHT_DECAY,
+    )
+    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
+    source_subjects = list(protocol.source_subjects)
+    path_weighting = dataset == "city"
+    examples = list(
+        weighted_examples(list(protocol.source_examples), path_weighting=path_weighting)
+    )
+    source_set = set(source_subjects)
+    train_indices = [
+        sample.sample_index for sample in bank.samples if sample.subject_id in source_set
+    ]
+    initial_a1 = _parameter_probe(model.a1)
+    initial_head = _parameter_probe(model.severity_head)
+    history = []
+    for epoch in range(1, int(best_epoch) + 1):
+        history.append(
+            {
+                "epoch": epoch,
+                **_train_epoch(
+                    model, optimizer, scaler, bank, train_indices, examples, epoch, device
+                ),
+            }
+        )
+        write_json(output_root / "refit_history.json", history)
+    a1_delta = float(torch.linalg.vector_norm(_parameter_probe(model.a1) - initial_a1))
+    head_delta = float(torch.linalg.vector_norm(_parameter_probe(model.severity_head) - initial_head))
+    if min(a1_delta, head_delta) <= 0.0:
+        raise AssertionError("Source refit did not update both trainable branches")
+    checkpoint = {
+        "dataset": dataset,
+        "checkpoint_schema": "trained_fold_refit_v1",
+        "fold_id": fold_id,
+        "training_seed": TRAINING_SEED,
+        "severity_weight": SEVERITY_WEIGHT,
+        "severity_windows_per_session": SEVERITY_WINDOWS_TRAIN,
+        "encoder_frozen": True,
+        "refit_protocol": "source_validation_selection_then_source_refit",
+        "best_epoch": int(best_epoch),
+        "model_spec": model.a1.model_spec(),
+        "model_state_dict": {
+            key: value.detach().cpu() for key, value in model.a1.state_dict().items()
+        },
+        "severity_head_state_dict": {
+            key: value.detach().cpu() for key, value in model.severity_head.state_dict().items()
+        },
+        "source_subjects": source_subjects,
+        "test_subjects": list(protocol.test_subjects),
+    }
+    torch.save(checkpoint, output_root / "checkpoint.pt")
+    report = {
+        "status": "complete",
+        "dataset": dataset,
+        "fold_id": fold_id,
+        "best_epoch": int(best_epoch),
+        "source_subjects": source_subjects,
+        "test_subjects": list(protocol.test_subjects),
+        "refit_epochs": int(best_epoch),
+        "a1_delta_probe_l2": a1_delta,
+        "severity_head_delta_probe_l2": head_delta,
+        "encoder_grad_norm": 0.0,
+        "encoder_delta_probe_l2": 0.0,
+        "history": history,
+    }
+    write_json(output_root / "refit_report.json", report)
+    del model
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
+    return report
 
 
 def run_monifeixing_smoke(config: dict, fold: int, device_name: str, output_root: Path) -> dict:
     fold_id = f"fold_{int(fold)}"
-    bank, source_subjects, examples = _monifeixing_protocol(config, fold_id)
+    dataset_data = load_training_dataset(config, "monifeixing", torch.device("cpu"))
+    bank = dataset_data.bank
+    protocol = dataset_data.folds[fold_id]
     device = torch.device(device_name)
     model = VestibularFusionModel(bank.encoder_state, freeze_encoder=True).to(device)
-    chosen = source_subjects[:4]
+    chosen = list(protocol.source_subjects)[:4]
     windows, labels = [], []
     for subject in chosen:
         record = bank.records[subject]
@@ -121,13 +532,21 @@ def run_monifeixing_smoke(config: dict, fold: int, device_name: str, output_root
     embeddings = model.forward_domain_batch(window_tensor)
     state_logits = leave_one_subject_out_logits(embeddings, label_tensor, model.a1.temperature())
     state_loss = F.binary_cross_entropy_with_logits(state_logits, label_tensor)
-    severity_examples = [next(example for example in examples if example.subject_id == subject) for subject in chosen]
-    reference_embeddings = [embedding[current_labels < 0.5] for embedding, current_labels in zip(embeddings, label_tensor)]
-    task_embeddings = [embedding[current_labels > 0.5] for embedding, current_labels in zip(embeddings, label_tensor)]
+    severity_examples = list(protocol.source_examples)[: len(chosen)]
+    reference_embeddings = [
+        embedding[current_labels < 0.5]
+        for embedding, current_labels in zip(embeddings, label_tensor)
+    ]
+    task_embeddings = [
+        embedding[current_labels > 0.5]
+        for embedding, current_labels in zip(embeddings, label_tensor)
+    ]
     severity_logits = model.severity_logits(reference_embeddings, task_embeddings)
-    severity_labels = severity_logits.new_tensor([float(example.label) for example in severity_examples])
+    severity_labels = severity_logits.new_tensor(
+        [float(example.label) for example in severity_examples]
+    )
     severity_loss = F.binary_cross_entropy_with_logits(severity_logits, severity_labels)
-    loss = state_loss + 0.3 * severity_loss
+    loss = state_loss + SEVERITY_WEIGHT * severity_loss
     loss.backward()
     optimizer.step()
     deltas = model.parameter_deltas(before)
@@ -148,165 +567,35 @@ def run_monifeixing_smoke(config: dict, fold: int, device_name: str, output_root
     return result
 
 
-def _vrq_training_data(config: dict, fold_id: str, device: torch.device):
-    root = (
-        Path(config["paths"]["asset_root"])
-        / "vr_ssq_regression"
-        / "artifacts_fair_joint_lambda0p3"
-        / "vrq"
-        / "seed_42"
-        / "main"
-        / "full"
-    )
-    manifest = read_json(root / "audit_manifest.json")
-    payload = manifest["run_fingerprint_payload"]
-    args = SimpleNamespace(
-        pretrain_ckpt=str(config["paths"]["pretrain_checkpoint"]),
-        data_root=str(config["paths"]["vrq_data_root"]),
-        mat_key=payload["mat_key"],
-        encoder_backend="native",
-        ea_mode="subject_unlabeled",
-        encode_batch_size=64,
-        record_storage_dtype=np.float16,
-    )
-    protocols = [vrq.SubjectProtocol(**row) for row in manifest["subject_protocols"]]
-    bank = vrq.build_feature_bank(args, device, manifest["audit"], protocols)
-    split = manifest["folds"][fold_id]
-    source = sorted(split["train_subjects"] + split["val_subjects"], key=subject_sort_key)
-    task = {row.subject_id: row.final_task for row in protocols}
-    examples = [
-        SeverityExample(
-            subject,
-            "rest01",
-            task[subject],
-            int(manifest["audit"]["subjects"][subject]["ssq_label"]),
-        )
-        for subject in source
-    ]
-    return bank, source, examples
-
-
-def _city_training_data(config: dict, fold_id: str, device: torch.device):
-    root = (
-        Path(config["paths"]["asset_root"])
-        / "vr_ssq_regression"
-        / "artifacts_city_a3_lambda_sweep_strict"
-        / "audit"
-        / "audit_manifest.json"
-    )
-    manifest = read_json(root)
-    audit = json.loads(json.dumps(manifest["audit"]))
-    data_root = Path(config["paths"]["city_data_root"])
-    for metadata in audit["subjects"].values():
-        if metadata.get("included"):
-            metadata["mat_path"] = str(data_root / Path(metadata["mat_path"]).name)
-    args = SimpleNamespace(
-        pretrain_ckpt=str(config["paths"]["pretrain_checkpoint"]),
-        encoder_backend="native",
-        mat_key="data256",
-        ea_mode="subject_unlabeled",
-        encode_batch_size=64,
-        record_storage_dtype=np.float16,
-    )
-    bank = city.build_feature_bank(args, device, audit)
-    split = manifest["fold_manifest"]["folds"][fold_id]
-    source = sorted(split["train_subjects"] + split["val_subjects"], key=subject_sort_key)
-    aliases = {}
-    for subject, metadata in audit["subjects"].items():
-        for segment in metadata.get("segments", []):
-            if segment.get("path_score") is not None:
-                aliases[(subject, int(segment["route_order"]))] = city.session_alias(
-                    segment, metadata["anchor_session"]
-                )
-    examples = [
-        SeverityExample(
-            str(row["subject_id"]),
-            "rest01",
-            aliases[(str(row["subject_id"]), int(row["route_order"]))],
-            int(row["path_label"]),
-        )
-        for row in audit["path_labels"]
-        if str(row["subject_id"]) in source
-    ]
-    return bank, source, examples
-
-
 def _full_fold_train(
     dataset: str,
+    fold_id: str,
     bank,
-    source_subjects: list[str],
-    examples: list[SeverityExample],
+    protocol,
     device: torch.device,
     output_root: Path,
-    *,
-    epochs: int = 50,
 ) -> dict:
     if output_root.exists() and any(output_root.iterdir()):
         raise FileExistsError(f"Training refuses a non-empty output directory: {output_root}")
     output_root.mkdir(parents=True, exist_ok=True)
-    torch.manual_seed(1001)
-    model = VestibularFusionModel(a1_seed=1001, dropout=0.25).to(device)
-    a1 = model.a1
-    head = model.severity_head
-    optimizer = torch.optim.AdamW(
-        [parameter for parameter in model.parameters() if parameter.requires_grad],
-        lr=1e-4,
-        weight_decay=1e-3,
+    best_epoch, selection = _select_epoch(
+        dataset, fold_id, bank, protocol, device, output_root
     )
-    source_indices = [
-        sample.sample_index for sample in bank.samples if sample.subject_id in set(source_subjects)
-    ]
-    history = []
-    rng = random.Random(1001)
-    model.train()
-    for epoch in range(1, int(epochs) + 1):
-        totals = {"loss": 0.0, "state_loss": 0.0, "severity_loss": 0.0, "steps": 0}
-        batches = domain_batches(bank, source_indices, 1001 + epoch * 100003, 5, 5)
-        shuffled = list(examples)
-        rng.shuffle(shuffled)
-        for subjects, local_indices in batches:
-            tokens, _, labels = assemble_domain_batch(bank, subjects, local_indices)
-            tokens = tokens.to(device)
-            labels = labels.to(device)
-            current = [shuffled[totals["steps"] % len(shuffled)]]
-            optimizer.zero_grad(set_to_none=True)
-            embeddings = model.forward_token_batch(tokens)
-            state_logits = leave_one_subject_out_logits(embeddings, labels, a1.temperature())
-            state_loss = F.binary_cross_entropy_with_logits(state_logits, labels)
-            direct_logits = _pair_logits(model, bank, current, device, windows=5)
-            direct_labels = direct_logits.new_tensor([float(example.label) for example in current])
-            severity_loss = F.binary_cross_entropy_with_logits(direct_logits, direct_labels)
-            loss = state_loss + 0.3 * severity_loss
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(list(model.parameters()), 1.0)
-            optimizer.step()
-            totals["loss"] += float(loss.detach().cpu())
-            totals["state_loss"] += float(state_loss.detach().cpu())
-            totals["severity_loss"] += float(severity_loss.detach().cpu())
-            totals["steps"] += 1
-        for key in ("loss", "state_loss", "severity_loss"):
-            totals[key] /= max(int(totals["steps"]), 1)
-        totals["epoch"] = epoch
-        history.append(totals)
-        write_json(output_root / "history.json", history)
-    torch.save(
-        {
-            "dataset": dataset,
-            "training_seed": 1001,
-            "severity_weight": 0.3,
-            "encoder_frozen": True,
-            "model_spec": a1.model_spec(),
-            "model_state_dict": {
-                key: value.detach().cpu() for key, value in model.a1.state_dict().items()
-            },
-            "severity_head_state_dict": {
-                key: value.detach().cpu() for key, value in model.severity_head.state_dict().items()
-            },
-            "source_subjects": source_subjects,
+    refit = _refit(dataset, fold_id, bank, protocol, best_epoch, device, output_root)
+    result = {
+        "status": "complete",
+        "dataset": dataset,
+        "fold_id": fold_id,
+        "protocol": "source_validation_selection_then_source_refit",
+        "selection": {
+            "best_epoch": best_epoch,
+            "validation_key": selection["validation_key"],
         },
-        output_root / "checkpoint.pt",
-    )
-    result = {"status": "complete", "dataset": dataset, "epochs": epochs, "history": history}
+        "refit": {
+            "epochs": best_epoch,
+            "checkpoint": str((output_root / "checkpoint.pt").name),
+        },
+    }
     write_json(output_root / "report.json", result)
     return result
 
@@ -327,16 +616,12 @@ def run_training(
         raise ValueError("Full training requires --fold 1..5")
     fold_id = f"fold_{int(fold)}"
     device = torch.device(device_name)
+    dataset_data = load_training_dataset(config, dataset, device)
+    protocol = dataset_data.folds[fold_id]
+    bank = dataset_data.bank
     if dataset == "monifeixing":
-        bank, subjects, examples = _monifeixing_protocol(config, fold_id)
         encoder = TemporalEncoder().to(device)
         encoder.load_state_dict(bank.encoder_state, strict=True)
-        monifeixing.refresh_tokens(bank, encoder, subjects, device, 64)
+        monifeixing.refresh_tokens(bank, encoder, list(protocol.source_subjects), device, 64)
         del encoder
-    elif dataset == "vrq":
-        bank, subjects, examples = _vrq_training_data(config, fold_id, device)
-    elif dataset == "city":
-        bank, subjects, examples = _city_training_data(config, fold_id, device)
-    else:
-        raise ValueError(f"Unsupported dataset: {dataset}")
-    return _full_fold_train(dataset, bank, subjects, examples, device, output_root)
+    return _full_fold_train(dataset, fold_id, bank, protocol, device, output_root)

@@ -195,9 +195,47 @@ def extract_subject_views(
     return torch.cat(embeddings).numpy(), summaries.cpu().numpy()
 
 
+def extract_views(
+    model: DirectionalMambaKAN,
+    bank: FeatureBank,
+    subjects: list[str],
+    device: torch.device,
+    batch_size: int,
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    args = SimpleNamespace(eval_batch_size=int(batch_size))
+    embeddings = {}
+    moments = {}
+    for subject in sorted(subjects, key=lambda value: int(str(value)[3:])):
+        embedding, summaries = extract_subject_views(model, bank, subject, device, args)
+        embeddings[subject] = embedding
+        moments[subject] = select_summary(summaries)
+    return embeddings, moments
+
+
 def select_summary(summaries: np.ndarray, name: str = "moments") -> np.ndarray:
     blocks = summaries.reshape(len(summaries), 7, 96)
     return np.concatenate([blocks[:, index] for index in SUMMARY_SLICES[name]], axis=1)
+
+
+def fit_prototypes(
+    embeddings: dict[str, np.ndarray], bank: FeatureBank, source_subjects: list[str]
+) -> np.ndarray:
+    subject_centers = []
+    for subject in source_subjects:
+        labels = bank.records[subject].labels
+        subject_centers.append(
+            np.stack(
+                [embeddings[subject][labels == label].mean(axis=0) for label in (0, 1)],
+                axis=0,
+            )
+        )
+    subject_centers = np.asarray(subject_centers, dtype=np.float64)
+    subject_centers /= np.maximum(
+        np.linalg.norm(subject_centers, axis=-1, keepdims=True), 1e-8
+    )
+    prototypes = subject_centers.mean(axis=0)
+    prototypes /= np.maximum(np.linalg.norm(prototypes, axis=-1, keepdims=True), 1e-8)
+    return prototypes.astype(np.float32)
 
 
 def r4_rank(values: np.ndarray, anchor_mask: np.ndarray) -> np.ndarray:

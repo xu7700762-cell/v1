@@ -152,7 +152,7 @@ def _check_source_tree() -> dict:
     }
 
 
-def _check_protocol(config: dict) -> dict:
+def _check_protocol(config: dict, *, reference_assets: bool) -> dict:
     paths = config["paths"]
     asset_root = Path(paths["asset_root"])
     vr_root = asset_root / "vr_ssq_regression"
@@ -169,6 +169,7 @@ def _check_protocol(config: dict) -> dict:
     files = [
         _require(mono / "config.json", "monifeixing protocol config"),
         _require(mono / "report.json", "monifeixing report"),
+        _require(mono / "severity_predictions.csv", "monifeixing severity labels"),
         _require(mono_outer, "monifeixing outer identity manifest"),
         _require(vrq_root / "main" / "full" / "audit_manifest.json", "VRQ audit manifest"),
         _require(vrq_root / "main" / "full" / "fold_manifest.json", "VRQ fold manifest"),
@@ -264,6 +265,9 @@ def _check_protocol(config: dict) -> dict:
         ]
     )
 
+    if not reference_assets:
+        return {"file_count": len(files), "summary_sha256": _summary_digest(files), "files": files}
+
     initialization = {
         row["initialization_id"]: row
         for row in mono_report["initialization_reports"]
@@ -353,13 +357,13 @@ def _check_protocol(config: dict) -> dict:
     return {"file_count": len(files), "summary_sha256": _summary_digest(files), "files": files}
 
 
-def run_preflight(config: dict) -> dict:
+def run_preflight(config: dict, *, reference_assets: bool = True) -> dict:
     result = {
         "status": "passed",
         "protocol": PROTOCOL,
         "environment": _check_environment(),
         "source": _check_source_tree(),
-        "assets": _check_protocol(config),
+        "assets": _check_protocol(config, reference_assets=reference_assets),
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return result

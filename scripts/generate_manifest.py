@@ -77,7 +77,7 @@ def main() -> int:
     args = parser.parse_args()
     config = load_config(args.config)
     environment = _check_environment()
-    assets = _check_protocol(config)
+    assets = _check_protocol(config, reference_assets=True)
     write_json(
         Path(args.asset_output),
         {

@@ -11,10 +11,22 @@
     "context_crosses_session": false,
     "state_fusion": "(R1 + R2 + 2R4) / 4",
     "severity": "R4-only",
-    "checkpoint_retraining": false,
+    "checkpoint_retraining": true,
+    "training_schedule": "source_validation_selection_then_source_refit",
+    "selection_key": [
+      "-severity_BCE",
+      "severity_balanced_accuracy",
+      "severity_AUROC",
+      "state_subject_macro_balanced_accuracy"
+    ],
+    "selection_max_epochs": 50,
+    "selection_patience": 10,
+    "refit_epochs": "selected_best_epoch",
+    "severity_training_examples_per_batch": 5,
+    "severity_class_and_subject_weighting": true,
     "interpretation": "optimistic_non_nested_severity_diagnostic"
   },
-  "asset_summary_sha256": "a81a90be81bae0b3b8d085729984f0627d80e156dfbf8df6fa5ba1b077440b04",
+  "asset_summary_sha256": "b85274cd7668a0b9b3d6a5607d98d3e8b56a961e8d0386caa9fd73a0bab17b31",
   "assets": [
     {
       "label": "monifeixing protocol config",
@@ -25,6 +37,11 @@
       "label": "monifeixing report",
       "size": 57838,
       "sha256": "8adbf94a77955e23886bd2082ae0cb73fd750032fbf02ffb60f0bb12949e4409"
+    },
+    {
+      "label": "monifeixing severity labels",
+      "size": 3290,
+      "sha256": "0ca71b1f7524d6ab4ca98314ffd3acaba4d007a8f17947774e9a9b9c95b69117"
     },
     {
       "label": "monifeixing outer identity manifest",
@@ -52,12 +69,12 @@
       "sha256": "a327551a64807c5b5232a9bbf2a6dbdd3242a5d8c76b27025d2fda1b6acb9b89"
     },
     {
-      "label": "monifeixing initial encoder",
+      "label": "monifeixing initial Temporal Encoder",
       "size": 114186218,
       "sha256": "1f45a3fd61cf95920d7944c0d486b82afb272414df2d14f80d74189f291f21c6"
     },
     {
-      "label": "pretrained encoder",
+      "label": "pretrained Temporal Encoder",
       "size": 114186218,
       "sha256": "0e2ab9109d87a32c6b25f0c307fb8b1102ef5e0e83e86b9b07f7dee166daaa27"
     },
@@ -1314,57 +1331,57 @@
   ],
   "source_workspace_files": [
     {
-      "label": "upstream encoder module",
+      "label": "upstream_encoder_module",
       "size": 19280,
       "sha256": "9f5c7b7b35308724d66c386ffa7d19af12eef1a07f9aef4f9f1c40044d835904"
     },
     {
-      "label": "VR signal encoder adapter",
+      "label": "vr_signal_encoder_adapter",
       "size": 10686,
       "sha256": "25cd591d279bfb281040a41a3f634085c4bddd3166babe60f082f9bb2355c2b0"
     },
     {
-      "label": "VR subject split runner",
+      "label": "vr_subject_split_runner",
       "size": 97447,
       "sha256": "b7345680b907a16a1f91b38e5c778ec3bfffee8160fc75ac9c43d60d915eb2af"
     },
     {
-      "label": "city subject split runner",
+      "label": "city_subject_split_runner",
       "size": 68680,
       "sha256": "3a51c8f617be1df2689fc5d2a7ba894959024ad091b8e62d660d5d4e6aef0a79"
     },
     {
-      "label": "monifeixing subject split runner",
+      "label": "monifeixing_subject_split_runner",
       "size": 68789,
       "sha256": "5a0446f464f9f8400b1add23659f700b7d994a4dd3561c69c5e22b5495e243b0"
     },
     {
-      "label": "multitask model",
+      "label": "multitask_model",
       "size": 4800,
       "sha256": "cc1230650dce9e1a404aff99ff3f97e8b1f001d64bba09f3625c329cbfd204ef"
     },
     {
-      "label": "multitask training",
+      "label": "multitask_training",
       "size": 18360,
       "sha256": "76fc77662e0cae73bbc6f8e72e57a2ec01e37054ff85b4c998003be4c42cf0e7"
     },
     {
-      "label": "joint ablation context",
+      "label": "joint_ablation_context",
       "size": 13577,
       "sha256": "c1bca07c29c3d0bfdc3392386d523b8f19f6f681be03ef4c6fe48843208e67c9"
     },
     {
-      "label": "subject split protocol",
+      "label": "subject_split_protocol",
       "size": 20510,
       "sha256": "06edd92c17d936e7d5ecf3fe0994f578c65cf312648c1d1c48c06695e7bbaf00"
     },
     {
-      "label": "temporal core",
+      "label": "temporal_core",
       "size": 9100,
       "sha256": "1fbfcee44891a97be05b3ca9d381eb44320f105dfe3effbaf10b4538685452ad"
     },
     {
-      "label": "R4 context",
+      "label": "r4_context",
       "size": 17204,
       "sha256": "22878694a284eb5c54a34b7cb30b54076fc33c6914fc1f03ed641af0321c6ad1"
     }
@@ -1372,8 +1389,8 @@
   "release_files": [
     {
       "path": "README.md",
-      "size": 7443,
-      "sha256": "d3aad9e27d58b5be724f003396577fc32b34f9c2ef8bec39cce21717f6f373d1"
+      "size": 15981,
+      "sha256": "ac17ddbcf0fdebbba17a03d159b4883cced819a5d6ab626cd27f4fbd0e0ad849"
     },
     {
       "path": "configs/paths.example.json",
@@ -1402,8 +1419,8 @@
     },
     {
       "path": "scripts/generate_manifest.py",
-      "size": 4239,
-      "sha256": "c84d1ae79b778e88e5648e8512feac36f24ee4cd371f6d9dae560570f2bafc2a"
+      "size": 4262,
+      "sha256": "6bbcbeb1a502318bd7e5a938fafd4b26c2d412ecbee1988d1114964ca20ff8bf"
     },
     {
       "path": "scripts/reproduce_wsl.ps1",
@@ -1427,8 +1444,8 @@
     },
     {
       "path": "src/vestibular_fusion/cli.py",
-      "size": 2342,
-      "sha256": "be970f5b6159a83ce6133c2f8feeaff6fc97107bbc07b980fa4db85e3eecfa36"
+      "size": 3239,
+      "sha256": "77b6d855af2086f04ca0460a6202672c65a531ee517f65609c00f0484f1f63f5"
     },
     {
       "path": "src/vestibular_fusion/config.py",
@@ -1442,23 +1459,33 @@
     },
     {
       "path": "src/vestibular_fusion/data/city.py",
-      "size": 5781,
-      "sha256": "c228678c670fbe1fa6b54985eaaeae8c94daa8196a137cf715d549cc5cfa4ff4"
+      "size": 5754,
+      "sha256": "3ed2a5811566ed75cb3cfff6431d14489acf7dad9690bab7fc2c0f9b22ea5544"
     },
     {
       "path": "src/vestibular_fusion/data/features.py",
-      "size": 8686,
-      "sha256": "8c7bce067e3fe4e51c53f36ff70a27a88a4cbfd3f899398b761cf49374b0b4c1"
+      "size": 8024,
+      "sha256": "405b20d0d9056c46604820066dd96dd71c844cd23adb6085e9d2dbcff0d57ef2"
     },
     {
       "path": "src/vestibular_fusion/data/monifeixing.py",
-      "size": 8063,
-      "sha256": "10fe18ac985358afe40e67bcba86616fb4b75e640172ca2dce5c49dba434bfc2"
+      "size": 9213,
+      "sha256": "ccef51f3cfb760d55e4812b3d7e62d221fd6d1739b3350c95f0436520a0ede46"
+    },
+    {
+      "path": "src/vestibular_fusion/data/types.py",
+      "size": 691,
+      "sha256": "8c40b2ebe2d63c98cb804f472ee0230b3b9b4affdd5ffc17550ccf22ae5e8019"
     },
     {
       "path": "src/vestibular_fusion/data/vrq.py",
-      "size": 14464,
-      "sha256": "5ea38d7be4c098ed2380a8d5ca644c5daa3163014da41f39d339db36fb0bbbe5"
+      "size": 15727,
+      "sha256": "61cbe14fa26de73440f0029eff802f7fb311a8830b809b2832a1d5b05a9edc16"
+    },
+    {
+      "path": "src/vestibular_fusion/evaluate.py",
+      "size": 399,
+      "sha256": "90e90137476155117ea1d79f35504e24aac01c0f1a09a5a530db46f52768828b"
     },
     {
       "path": "src/vestibular_fusion/evaluation/__init__.py",
@@ -1492,8 +1519,8 @@
     },
     {
       "path": "src/vestibular_fusion/evaluation/runner.py",
-      "size": 23035,
-      "sha256": "6b14297c8b30c3c2d62382ed1429dfb5bc68a12be32a0590040172448b6df5f2"
+      "size": 23080,
+      "sha256": "9ef16aaa3b329489d0acd40ba0969a1976ccf81a889fdd68bed5d840e1f67049"
     },
     {
       "path": "src/vestibular_fusion/evaluation/severity.py",
@@ -1501,14 +1528,19 @@
       "sha256": "9426613f684f94f6f588b5500cb41390112c48e74eb80d83ea35657df5fffb2f"
     },
     {
+      "path": "src/vestibular_fusion/evaluation/trained.py",
+      "size": 17623,
+      "sha256": "a72c8273a0a335174f57909ecc490e452be85a96cb2f95c14814a8d5ddd96173"
+    },
+    {
       "path": "src/vestibular_fusion/model/__init__.py",
-      "size": 332,
-      "sha256": "a76eac983950d973eec3a74fc47c938d5525d3ab88ed61733c216c24ca626056"
+      "size": 394,
+      "sha256": "7ba514609532dbc94e82e41fe5caeadef23e792def56d8cc5f945e0e692d822b"
     },
     {
       "path": "src/vestibular_fusion/model/a1.py",
-      "size": 6873,
-      "sha256": "b06293ed8351c3db62cbc21ff321501f9e69d3dfb4ccc0dc083efd1a32c3b132"
+      "size": 6731,
+      "sha256": "3a12f8cba72fdb3a8d447614f9a97e557e871b5520e6cf644df31514d0c68a1c"
     },
     {
       "path": "src/vestibular_fusion/model/encoder.py",
@@ -1517,8 +1549,8 @@
     },
     {
       "path": "src/vestibular_fusion/model/main.py",
-      "size": 2786,
-      "sha256": "41974b0acae09dbecddbdb075799df78aff852958a97d0887e18fc643204b501"
+      "size": 3185,
+      "sha256": "bf9fb90de181d388fbc71f908a549ee4443afe112daee799b7093ecdd350f225"
     },
     {
       "path": "src/vestibular_fusion/model/severity.py",
@@ -1527,13 +1559,13 @@
     },
     {
       "path": "src/vestibular_fusion/preflight.py",
-      "size": 14546,
-      "sha256": "15f1f5686775fcf37521c684534c9a283f6efd661752fc6160ca1d68dd94356b"
+      "size": 14861,
+      "sha256": "e65c7c787692c1f1f5f1f559bb9665cf82b9d15444702244fe1b58a03f57a32e"
     },
     {
       "path": "src/vestibular_fusion/protocol.py",
-      "size": 977,
-      "sha256": "3dd1ab82500a01cec7cdac4e4ec5828e315d752754ed54a29654b3ad6d6b5921"
+      "size": 1420,
+      "sha256": "fe5227c530955f92c4ebff741a8c394e99ddf04bac3c4ce883aacdc8f3e77527"
     },
     {
       "path": "src/vestibular_fusion/reproduce.py",
@@ -1551,9 +1583,14 @@
       "sha256": "cf7cdaa4cab5a7f0b018282cfac320756a9a1e15d4a3bf0fb98b91bcdda69541"
     },
     {
+      "path": "src/vestibular_fusion/training/data.py",
+      "size": 9533,
+      "sha256": "c5d1613c34077a8a02301925f2b497706eaaa2e76f37c6b43a77a154052e41cc"
+    },
+    {
       "path": "src/vestibular_fusion/training/runner.py",
-      "size": 13910,
-      "sha256": "2c458d1c862c4c4f83b26024ca82e3b695aae1ecfe75d448608face10a6bcd6e"
+      "size": 23174,
+      "sha256": "eba23d79dbe17d89595867c169c20a37e95943737f4fae7175e9778fa39ccc05"
     },
     {
       "path": "src/vestibular_fusion/verify.py",
@@ -1567,8 +1604,8 @@
     },
     {
       "path": "tests/test_fusion.py",
-      "size": 1252,
-      "sha256": "4184fa90d3795402bbb4f8a9bf23ac65849548500c90da047b962990ea3727f6"
+      "size": 2340,
+      "sha256": "dbfebd39e602fbd6891ac5b02378a9b13d48840239dceccac8681c5465afe2a8"
     },
     {
       "path": "tests/test_geometry.py",
@@ -1576,9 +1613,19 @@
       "sha256": "e5b12e20940c4ba931fb266bf6562a67b48de4810626901366a372f266c40848"
     },
     {
+      "path": "tests/test_manifest_script.py",
+      "size": 1589,
+      "sha256": "d444d7010a8ec48fee225f86e380c2e5ad6d30e66a0fa175238dc4e137b81bb1"
+    },
+    {
       "path": "tests/test_protocol.py",
       "size": 464,
       "sha256": "e0358376c2fb94bba5e1db1103865569028058e4802aad30b201335dadd6a539"
+    },
+    {
+      "path": "tests/test_trained_evaluation.py",
+      "size": 5787,
+      "sha256": "69a0e48488014191591bb18931100ecbf557c2609be735740ee66ec684d24b71"
     },
     {
       "path": "tests/test_validation.py",
